@@ -1,0 +1,2554 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>彩色和弦譜/身體打擊/打擊樂器譜產生器</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- html2pdf.js for direct PDF export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <style>
+    :root {
+      --c-red: #c61a09;
+      --c-orange: #f26800;
+      --c-yellow: #ffdf00;
+      --c-green: #78be20;
+      --c-cyan: #00b0f0;
+      --c-blue: #0020d0;
+      --c-purple: #702082;
+      --c-high-red: #c61a09;
+      --high-ring-border: #0f172a;
+    }
+
+    .kaiti-font {
+      font-family: "DFKai-SB", "BiauKai", "KaiTi", "Noto Serif TC", serif;
+    }
+
+    .color-1 { background-color: var(--c-red) !important; border-color: transparent !important; color: white !important; }
+    .color-2 { background-color: var(--c-orange) !important; border-color: transparent !important; color: white !important; }
+    .color-3 { background-color: var(--c-yellow) !important; border-color: transparent !important; color: #1e293b !important; }
+    .color-4 { background-color: var(--c-green) !important; border-color: transparent !important; color: white !important; }
+    .color-5 { background-color: var(--c-cyan) !important; border-color: transparent !important; color: white !important; }
+    .color-6 { background-color: var(--c-blue) !important; border-color: transparent !important; color: white !important; }
+    .color-7 { background-color: var(--c-purple) !important; border-color: transparent !important; color: white !important; }
+
+    .color-8-bordered {
+      background-color: var(--c-high-red) !important;
+      border: 5px solid var(--high-ring-border) !important;
+      box-shadow: 0 0 0 2.5px #ffffff inset, 0 3px 6px rgba(0,0,0,0.25) !important;
+      color: white !important;
+    }
+    .color-8-white {
+      background-color: #ffffff !important;
+      border: 4px solid #0f172a !important;
+      box-shadow: 0 3px 5px rgba(0,0,0,0.18) !important;
+      color: #0f172a !important;
+    }
+
+    .perc-bell-node {
+      background-color: #fffbeb !important;
+      border: 2.5px solid #f59e0b !important;
+      box-shadow: 0 2px 5px rgba(245, 158, 11, 0.2) !important;
+    }
+
+    .bell-node {
+      transition: transform 0.12s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.12s ease;
+      touch-action: manipulation;
+      user-select: none;
+    }
+    .bell-node:hover {
+      transform: scale(1.08);
+    }
+    .bell-node.drag-over {
+      outline: 3.5px solid #3b82f6 !important;
+      outline-offset: 2px;
+      transform: scale(1.12);
+    }
+
+    .beat-column {
+      position: relative;
+      transition: background-color 0.15s ease, transform 0.15s ease;
+      border-radius: 1rem;
+      padding: 0.25rem 0.1rem;
+    }
+    .beat-column.chord-brush-hover {
+      background-color: rgba(59, 130, 246, 0.08);
+      outline: 2px dashed #3b82f6;
+    }
+    .beat-column.chord-drag-over {
+      background-color: rgba(16, 185, 129, 0.12);
+      outline: 2.5px solid #10b981;
+      transform: scale(1.02);
+    }
+
+    .beat-step-target.active-beat {
+      background-color: rgba(239, 68, 68, 0.15) !important;
+      outline: 3px solid #ef4444 !important;
+      border-radius: 1rem;
+      transform: scale(1.03);
+    }
+
+    body.hide-guide-line .beat-line-guide {
+      display: none !important;
+    }
+
+    .beat-line-guide {
+      position: absolute;
+      top: -8px;
+      bottom: -8px;
+      left: 50%;
+      width: 4.5px;
+      transform: translateX(-50%);
+      background: linear-gradient(180deg, #ef4444 0%, #dc2626 50%, #b91c1c 100%);
+      border-radius: 9999px;
+      box-shadow: 0 0 12px rgba(239, 68, 68, 0.85), 0 0 4px #ef4444;
+      pointer-events: none;
+      z-index: 20;
+      animation: guide-pulse 0.2s ease-out;
+    }
+    .beat-line-guide::before {
+      content: '▼';
+      position: absolute;
+      top: -16px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 13px;
+      color: #dc2626;
+      line-height: 1;
+    }
+    @keyframes guide-pulse {
+      0% { opacity: 0.4; transform: translateX(-50%) scaleY(0.7); }
+      100% { opacity: 1; transform: translateX(-50%) scaleY(1); }
+    }
+
+    .lyric-justified-box {
+      width: 100%;
+      text-align: justify !important;
+      text-align-last: justify !important;
+      font-size: 3.2rem;
+      line-height: 1.15;
+      outline: none;
+      word-break: break-all;
+      user-select: text;
+      min-height: 4rem;
+      display: block;
+    }
+    .lyric-justified-box:focus {
+      background-color: #f8fafc;
+      box-shadow: 0 0 0 2px #93c5fd;
+      border-radius: 0.75rem;
+    }
+
+    body.hide-action-tags .lyric-action-word {
+      color: inherit !important;
+    }
+
+    #sheetScaleWrapper {
+      transform-origin: top center;
+      transition: transform 0.15s ease-out;
+    }
+
+    body.presentation-mode {
+      background-color: #ffffff;
+      padding: 0.75rem !important;
+      overflow-y: auto;
+    }
+    body.presentation-mode .hide-on-presentation {
+      display: none !important;
+    }
+    body.presentation-mode .measure-card {
+      border: none !important;
+      box-shadow: none !important;
+      padding: 0.5rem !important;
+      background: transparent !important;
+    }
+    body.presentation-mode .lyric-justified-box {
+      border: none !important;
+      background: transparent !important;
+      box-shadow: none !important;
+      pointer-events: none;
+    }
+
+    .floating-drag-panel {
+      cursor: grab;
+      user-select: none;
+    }
+    .floating-drag-panel:active {
+      cursor: grabbing;
+    }
+
+    @media print {
+      body { background: white !important; padding: 0 !important; }
+      .no-print { display: none !important; }
+      .sheet-canvas { box-shadow: none !important; border: none !important; padding: 0 !important; }
+      .measure-card { border: none !important; page-break-inside: avoid; }
+      .lyric-justified-box { border: none !important; background: transparent !important; }
+      .bell-node:not([class*="color-"]):not(.perc-bell-node) { opacity: 0.2; }
+    }
+  </style>
+</head>
+<body class="bg-slate-100 min-h-screen text-slate-800 font-sans p-3 md:p-5 transition-all duration-300">
+
+  <!-- 頂部功能區 -->
+  <header class="max-w-6xl mx-auto mb-3 hide-on-presentation no-print">
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200/90 p-3 md:p-4 flex flex-wrap gap-3 items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 via-rose-500 to-indigo-600 flex items-center justify-center text-white shadow-md text-xl">
+          🎵
+        </div>
+        <div>
+          <h1 class="text-lg md:text-xl font-black tracking-tight text-slate-900">彩色和弦譜/身體打擊/打擊樂器譜產生器</h1>
+        </div>
+      </div>
+
+      <!-- 右側設定區 -->
+      <div class="flex flex-wrap items-center gap-2">
+        <div class="flex items-center gap-1.5 bg-slate-50 rounded-xl px-2.5 py-1 border border-slate-200 text-xs">
+          <span class="font-bold text-slate-600">色系:</span>
+          <select id="colorSystemSelect" onchange="changeColorSystem(this.value)" class="font-semibold bg-white rounded-lg px-2 py-1 border border-slate-300 text-slate-700 shadow-sm outline-none">
+            <option value="handbell" selected>🔔 經典彩色手鐘</option>
+            <option value="boomwhackers">🎵 律音管 (Boomwhackers)</option>
+          </select>
+        </div>
+
+        <div id="highNoteOptionWrap" class="flex items-center gap-1.5 bg-slate-50 rounded-xl px-2.5 py-1 border border-slate-200 text-xs">
+          <span class="font-bold text-slate-600">8號Do:</span>
+          <select id="highNoteAppearanceSelect" onchange="changeHighNoteAppearance(this.value)" class="font-semibold bg-white rounded-lg px-2 py-1 border border-slate-300 text-slate-700 shadow-sm outline-none">
+            <option value="bordered" selected>粗框紅</option>
+            <option value="white">⚪ 白色</option>
+          </select>
+        </div>
+
+        <div class="flex items-center gap-1 bg-slate-50 rounded-xl px-2.5 py-1 border border-slate-200 text-xs">
+          <span class="font-bold text-slate-600">縮放:</span>
+          <button onclick="changeZoom(-0.05)" class="w-6 h-6 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 font-bold flex items-center justify-center">-</button>
+          <span id="zoomDisplayLabel" class="font-bold text-indigo-700 w-10 text-center">100%</span>
+          <button onclick="changeZoom(0.05)" class="w-6 h-6 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 font-bold flex items-center justify-center">+</button>
+        </div>
+
+        <div class="flex items-center gap-1 bg-slate-100 rounded-xl p-0.5 border border-slate-200">
+          <button onclick="saveProjectFile()" class="px-2.5 py-1 bg-white hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-bold shadow-xs transition flex items-center gap-1" title="將樂譜存檔為 JSON 檔">
+            <span>💾</span> 存檔
+          </button>
+          <button onclick="document.getElementById('projectFileInput').click()" class="px-2.5 py-1 bg-white hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-bold shadow-xs transition flex items-center gap-1" title="開啟先前儲存的樂譜檔">
+            <span>📂</span> 開啟
+          </button>
+          <input type="file" id="projectFileInput" accept=".json" class="hidden" onchange="loadProjectFile(event)">
+        </div>
+
+        <button onclick="resetToCleanState()" class="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-bold border border-rose-200 transition" title="清空所有音符並回到初始空白狀態">
+          <span>🗑️</span> 清空全譜
+        </button>
+
+        <button onclick="togglePresentation()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-xl text-xs font-bold shadow-sm transition flex items-center gap-1">
+          <span>🖥️</span> 全螢幕演奏
+        </button>
+
+        <button onclick="exportToPDF()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 active:scale-95 text-white rounded-xl text-xs font-bold shadow-sm transition flex items-center gap-1">
+          <span>📄</span> 匯出 PDF
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 節拍器與前進導引列 -->
+  <div class="max-w-6xl mx-auto mb-3 hide-on-presentation no-print">
+    <div class="bg-gradient-to-r from-rose-500/10 via-amber-500/10 to-emerald-500/10 border border-rose-200 rounded-2xl p-2.5 md:p-3 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 rounded-xl bg-rose-600 text-white flex items-center justify-center text-sm shadow">
+          ⏱️
+        </div>
+        <div>
+          <span class="text-xs md:text-sm font-black text-rose-950 flex items-center gap-1.5">
+            節奏前進導引
+          </span>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2.5">
+        <button id="btnPlayMetronome" onclick="toggleMetronome()" class="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-black text-xs md:text-sm rounded-xl shadow transition flex items-center gap-1.5">
+          <span id="playIcon">▶</span> <span id="playText">開始演奏導引</span>
+        </button>
+
+        <button onclick="resetMetronomeProgress()" class="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-xl border border-slate-200 shadow-xs transition flex items-center gap-1" title="回到起點">
+          <span>⏮️</span> 重置
+        </button>
+
+        <div class="flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-xl border border-rose-200 text-xs">
+          <span class="font-bold text-slate-600">導引位置:</span>
+          <input type="range" id="beatProgressSlider" min="0" max="0" value="0" oninput="onProgressSliderChange(this.value)" class="w-20 md:w-32 accent-rose-600 cursor-pointer">
+          <span id="beatProgressLabel" class="font-black text-rose-600 w-12 text-center text-xs">1 / 1</span>
+        </div>
+
+        <div class="flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-xl border border-rose-200 text-xs">
+          <span class="font-bold text-slate-600">速度:</span>
+          <input type="range" id="bpmSlider" min="40" max="180" value="80" oninput="updateBPM(this.value)" class="w-18 md:w-24 accent-rose-600 cursor-pointer">
+          <span id="bpmValueLabel" class="font-black text-rose-600 w-12 text-center text-xs">80 <span class="text-[9px] text-slate-400">BPM</span></span>
+        </div>
+
+        <label class="flex items-center gap-1.5 text-xs font-bold text-slate-700 cursor-pointer select-none bg-white px-2.5 py-1 rounded-xl border border-slate-200">
+          <input type="checkbox" id="metronomeMuteToggle" class="accent-rose-600">
+          <span>節拍器音響</span>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- 🎯 特殊字詞動作反應規則面板 -->
+  <div class="max-w-6xl mx-auto mb-3 hide-on-presentation no-print">
+    <div class="bg-gradient-to-r from-amber-50/90 via-orange-50/80 to-yellow-50/90 border border-amber-200 rounded-2xl p-3 md:p-4 shadow-sm">
+      <div class="flex items-center justify-between flex-wrap gap-2 mb-2 pb-1.5 border-b border-amber-200/80">
+        <div class="flex items-center gap-2">
+          <span class="text-xs md:text-sm font-black text-amber-950 flex items-center gap-1.5">
+            <span>🎯</span> 特定字詞動作反應玩法 (Action Word Rules)
+          </span>
+          <span class="text-[11px] bg-amber-200/80 text-amber-900 px-2 py-0.5 rounded-full font-bold">自訂歌詞顏色對應動作</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="applyActionWordsToSheetNotes()" class="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg shadow-2xs transition flex items-center gap-1" title="自動把關鍵詞的動作排入對應小節圓圈中（即時同步刪除與新增）">
+            <span>⚡</span> 自動帶入譜面動作
+          </button>
+          <button onclick="openActionWordModal()" class="px-2.5 py-1 bg-white hover:bg-amber-100 text-amber-900 text-xs font-bold rounded-lg border border-amber-300 shadow-2xs transition flex items-center gap-1">
+            <span>➕</span> 設定反應詞
+          </button>
+        </div>
+      </div>
+
+      <div id="actionWordsTagsContainer" class="flex items-center flex-wrap gap-2 text-xs">
+        <!-- 動態渲染動作規則標籤 -->
+      </div>
+    </div>
+  </div>
+
+  <!-- 快捷和弦庫面板 -->
+  <div class="max-w-6xl mx-auto mb-3 hide-on-presentation no-print">
+    <div class="bg-gradient-to-r from-blue-50/70 via-indigo-50/60 to-purple-50/70 rounded-2xl shadow-sm border border-indigo-100 p-3 md:p-4">
+      <div class="flex items-center justify-between flex-wrap gap-2 mb-2 pb-1.5 border-b border-indigo-100/80">
+        <div class="flex items-center gap-2">
+          <span class="text-xs md:text-sm font-black text-indigo-950 flex items-center gap-1">
+            <span>🎹</span> 快捷和弦庫
+          </span>
+          <span class="text-[11px] bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full font-bold">點選筆刷或整張卡片拖曳</span>
+        </div>
+        <div class="text-[11px] text-indigo-800 font-bold bg-white/90 px-2.5 py-0.5 rounded-lg border border-indigo-200 shadow-2xs">
+          🎼 排列順序：<strong>根音 ➔ 第3音 ➔ 第5音</strong>（織度 1 行優先填入根音）
+        </div>
+      </div>
+      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2" id="chordButtonsContainer"></div>
+    </div>
+  </div>
+
+  <!-- 8 音調色庫 & 打擊庫面板 -->
+  <div class="max-w-6xl mx-auto mb-3 hide-on-presentation no-print">
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200/90 p-3 md:p-4">
+      <div class="flex items-center justify-between flex-wrap gap-2 mb-2 pb-1.5 border-b border-slate-100">
+        <div class="flex items-center gap-2">
+          <span class="text-xs md:text-sm font-black text-slate-800 flex items-center gap-1">
+            <span>🎨</span> 手鐘/律音管音符 & 打擊庫
+          </span>
+        </div>
+
+        <div class="flex items-center gap-1.5 bg-slate-100/80 rounded-xl px-2.5 py-1 border border-slate-200 text-xs">
+          <span class="font-bold text-slate-600">圓圈樣式:</span>
+          <select id="circleStyleSelect" onchange="changeCircleStyle(this.value)" class="font-bold bg-white rounded-lg px-2 py-0.5 border border-slate-300 text-slate-700 shadow-2xs outline-none">
+            <option value="number" selected>簡譜數字(8)</option>
+            <option value="solfege">唱名音名 (Do, Re)</option>
+            <option value="pitch">英文音名 (C, D, E)</option>
+            <option value="colorOnly">純色圈圈</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- 第一排：8 音音符 -->
+      <div class="flex items-center flex-wrap gap-2 md:gap-3 justify-start mb-2.5" id="paletteBar">
+        <button onclick="selectMode('cycle')" id="btnCycleMode" class="flex flex-col items-center justify-center p-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 transition min-w-[58px] shadow-sm">
+          <span class="text-base mb-0.5">🔄</span>
+          <span class="text-[11px] font-bold text-slate-700 leading-tight">循環輪播</span>
+        </button>
+
+        <div id="paletteItems" class="flex items-center flex-wrap gap-1.5 md:gap-2"></div>
+
+        <button onclick="selectMode('eraser')" id="btnEraser" class="flex flex-col items-center justify-center p-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 transition min-w-[58px] shadow-sm" title="點擊切換為橡皮擦">
+          <span class="text-base mb-0.5">🧹</span>
+          <span class="text-[11px] font-bold text-slate-700 leading-tight">清除格</span>
+        </button>
+      </div>
+
+      <!-- 第二排：打擊樂器與身體打擊庫 -->
+      <div class="pt-2 border-t border-dashed border-slate-200 flex flex-wrap items-center gap-2">
+        <div class="flex items-center gap-1 mr-1 text-xs font-black text-amber-900 bg-amber-50 px-2.5 py-1 rounded-xl border border-amber-200 shadow-2xs">
+          <span>🥁</span> 打擊樂器/身體打擊:
+        </div>
+        <div id="percussionItems" class="flex items-center flex-wrap gap-1.5"></div>
+        <button onclick="openCustomItemModal()" class="flex items-center gap-1 px-2.5 py-1 rounded-xl border border-dashed border-indigo-400 bg-indigo-50/70 hover:bg-indigo-100 text-indigo-700 text-xs font-black transition shadow-2xs">
+          <span>➕</span> 自訂符號
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 操作按鈕控制列 -->
+  <div class="max-w-6xl mx-auto mb-4 hide-on-presentation no-print">
+    <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-2xl p-2.5 md:p-3 text-white shadow-md flex flex-wrap items-center justify-between gap-3 border border-indigo-900">
+      <div class="flex flex-wrap items-center gap-2">
+        <button onclick="openBatchLyricModal()" class="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-xl text-xs md:text-sm font-bold shadow transition flex items-center gap-1.5">
+          <span>📋</span> 批量貼入歌詞
+        </button>
+
+        <button onclick="addMeasure()" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white rounded-xl text-xs md:text-sm font-bold shadow transition flex items-center gap-1.5">
+          <span>➕</span> 新增樂句小節
+        </button>
+
+        <button onclick="undoState()" id="undoBtn" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 hover:text-white rounded-xl text-xs md:text-sm font-bold shadow border border-slate-700 transition flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
+          <span>↩</span> 還原上一步
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 樂譜主畫布 -->
+  <main class="max-w-6xl mx-auto">
+    <div id="sheetScaleWrapper">
+      <div id="sheetContainer" class="sheet-canvas bg-white rounded-3xl p-4 md:p-7 shadow-sm border border-slate-200/90 min-h-[580px] transition-all">
+        <div id="measuresGrid" class="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 items-start"></div>
+
+        <footer class="mt-10 pt-5 pb-1 border-t border-slate-200/80 text-center select-none">
+          <p class="text-xs md:text-sm text-slate-500 tracking-wide font-normal">
+            設計者：蕭忻 職能治療師/實習音樂治療師
+          </p>
+        </footer>
+      </div>
+    </div>
+  </main>
+
+  <!-- 全螢幕演奏投影控制懸浮面板 -->
+  <div id="presentationBar" class="fixed top-5 right-5 z-50 hidden select-none">
+    <div id="presentationDragHandle" class="floating-drag-panel bg-slate-900/95 backdrop-blur-md text-white px-3.5 py-2 rounded-2xl shadow-2xl flex flex-wrap items-center gap-2.5 border border-slate-700 text-xs">
+      <span class="cursor-move text-slate-400 font-bold" title="按住拖曳以移動此面板">⠿ 移動</span>
+      
+      <button onclick="toggleMetronome()" id="presPlayBtn" class="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 rounded-lg text-white font-bold flex items-center gap-1 shadow">
+        <span id="presPlayIcon">▶</span> <span id="presPlayText">導引</span>
+      </button>
+
+      <button onclick="resetMetronomeProgress()" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg font-bold flex items-center gap-1 border border-slate-600" title="回到第一拍">
+        <span>⏮️</span> 重置
+      </button>
+
+      <div class="flex items-center gap-1 bg-slate-800/90 px-2 py-1 rounded-lg border border-slate-700">
+        <span class="text-[10px] text-slate-300 font-bold">速度:</span>
+        <input type="range" id="presBpmSlider" min="40" max="180" value="80" oninput="updateBPM(this.value)" class="w-16 md:w-20 accent-rose-500 cursor-pointer">
+        <span id="presBpmLabel" class="text-[10px] font-black text-rose-400 w-11 text-center">80 <span class="text-[8px] text-slate-400">BPM</span></span>
+      </div>
+
+      <div class="flex items-center gap-1 bg-slate-800/90 px-2 py-1 rounded-lg border border-slate-700">
+        <span class="text-[10px] text-slate-300 font-bold">導引:</span>
+        <input type="range" id="presProgressSlider" min="0" max="0" value="0" oninput="onProgressSliderChange(this.value)" class="w-16 md:w-20 accent-rose-500 cursor-pointer">
+        <span id="presProgressLabel" class="text-[10px] font-black text-rose-400 w-8 text-center">1/1</span>
+      </div>
+
+      <label class="flex items-center gap-1 text-[11px] font-bold text-slate-200 cursor-pointer bg-slate-800/90 px-2 py-1 rounded-lg border border-slate-700" title="開啟或關閉前進紅線">
+        <input type="checkbox" id="presShowGuideLineToggle" checked onchange="toggleGuideLineVisibility(this.checked)" class="accent-rose-500">
+        <span>紅線</span>
+      </label>
+
+      <label class="flex items-center gap-1 text-[11px] font-bold text-slate-200 cursor-pointer bg-slate-800/90 px-2 py-1 rounded-lg border border-slate-700" title="是否開啟歌詞變色提示">
+        <input type="checkbox" id="presShowActionTagsToggle" checked onchange="toggleActionTagsVisibility(this.checked)" class="accent-amber-400">
+        <span>變色提示</span>
+      </label>
+
+      <div id="presZoomControls" class="flex items-center gap-1">
+        <span class="text-slate-300 font-semibold">比例:</span>
+        <button onclick="changeZoom(-0.05)" class="w-5 h-5 rounded bg-slate-800 border border-slate-600 hover:bg-slate-700 font-bold flex items-center justify-center">-</button>
+        <span id="presZoomDisplayLabel" class="font-bold text-amber-400 w-9 text-center">100%</span>
+        <button onclick="changeZoom(0.05)" class="w-5 h-5 rounded bg-slate-800 border border-slate-600 hover:bg-slate-700 font-bold flex items-center justify-center">+</button>
+      </div>
+
+      <button onclick="togglePresBarMini()" id="btnPresMini" class="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 font-bold text-[11px]">
+        ➖
+      </button>
+
+      <button onclick="togglePresentation()" class="bg-rose-600 hover:bg-rose-700 px-2.5 py-1 text-xs font-bold rounded-xl transition active:scale-95 shadow">
+        退出 (ESC)
+      </button>
+    </div>
+  </div>
+
+  <!-- 手機快速懸浮控制器 (FAB) -->
+  <div class="fixed bottom-5 right-5 z-40 flex items-center gap-2 drop-shadow-xl no-print">
+    <button onclick="resetMetronomeProgress()" class="w-10 h-10 rounded-full bg-slate-800/90 text-white backdrop-blur border border-slate-600 flex items-center justify-center shadow-lg active:scale-90 text-sm">
+      ⏮️
+    </button>
+    <button onclick="toggleMetronome()" id="mobileFabPlayBtn" class="flex items-center gap-1.5 px-4 py-2.5 rounded-full bg-rose-600 active:scale-95 text-white font-black shadow-xl backdrop-blur transition border-2 border-white/40">
+      <span id="fabPlayIcon" class="text-lg">▶</span>
+      <span id="fabPlayText" class="text-xs">演奏導引</span>
+    </button>
+  </div>
+
+  <!-- 🎯 特殊字詞動作設定彈窗 -->
+  <div id="actionWordModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-md w-full p-5 md:p-6 transition-all">
+      <div class="flex items-center justify-between pb-2.5 mb-3 border-b border-slate-100">
+        <div class="flex items-center gap-2">
+          <span class="text-2xl">🎯</span>
+          <div>
+            <h3 class="text-base font-black text-slate-800">設定字詞動作反應規則</h3>
+            <p class="text-xs text-slate-500">唱到某個詞，改變該字顏色並自動排入動作</p>
+          </div>
+        </div>
+        <button onclick="closeActionWordModal()" class="text-slate-400 hover:text-slate-600 text-lg font-bold w-7 h-7 rounded-full flex items-center justify-center hover:bg-slate-100">✕</button>
+      </div>
+
+      <div class="space-y-3.5 text-xs">
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">特定字詞 (例如：你、我、他):</label>
+          <input type="text" id="actionWordInput" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-amber-500" placeholder="請在此輸入要指定動作的詞彙...">
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">歌詞提示顏色:</label>
+          <div class="flex items-center gap-2.5 pt-1 pb-2" id="actionWordColorPicker">
+             <button type="button" data-color="#ef4444" class="w-6 h-6 rounded-full bg-[#ef4444] border-2 border-transparent hover:scale-110 transition ring-2 ring-offset-1 ring-slate-400"></button>
+             <button type="button" data-color="#f97316" class="w-6 h-6 rounded-full bg-[#f97316] border-2 border-transparent hover:scale-110 transition"></button>
+             <button type="button" data-color="#eab308" class="w-6 h-6 rounded-full bg-[#eab308] border-2 border-transparent hover:scale-110 transition"></button>
+             <button type="button" data-color="#22c55e" class="w-6 h-6 rounded-full bg-[#22c55e] border-2 border-transparent hover:scale-110 transition"></button>
+             <button type="button" data-color="#3b82f6" class="w-6 h-6 rounded-full bg-[#3b82f6] border-2 border-transparent hover:scale-110 transition"></button>
+             <button type="button" data-color="#a855f7" class="w-6 h-6 rounded-full bg-[#a855f7] border-2 border-transparent hover:scale-110 transition"></button>
+             <button type="button" data-color="#0f172a" class="w-6 h-6 rounded-full bg-[#0f172a] border-2 border-slate-300 hover:scale-110 transition"></button>
+          </div>
+          <input type="hidden" id="actionWordSelectedColor" value="#ef4444">
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">對應的肢體反應動作或打擊樂器:</label>
+          <div class="relative">
+            <div id="actionPercSelectBtn" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 font-bold cursor-pointer flex items-center justify-between" onclick="document.getElementById('actionPercDropdown').classList.toggle('hidden')">
+              <div id="actionPercSelectDisplay" class="flex items-center gap-2 text-sm">
+                <span>請選擇動作...</span>
+              </div>
+              <span class="text-xs text-slate-400">▼</span>
+            </div>
+            <div id="actionPercDropdown" class="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg hidden max-h-48 overflow-y-auto">
+              <!-- 動態注入選項 -->
+            </div>
+          </div>
+          <input type="hidden" id="actionPercSelectValue" value="none">
+          
+          <div class="flex items-center gap-2 mt-2">
+            <button onclick="openCustomItemModal()" class="text-xs text-indigo-600 font-bold bg-indigo-50 px-2.5 py-1 rounded border border-indigo-200 hover:bg-indigo-100 transition shadow-2xs">➕ 建立自訂符號</button>
+          </div>
+        </div>
+
+        <div class="bg-amber-50/70 p-2.5 rounded-xl border border-amber-200 text-slate-600 leading-relaxed">
+          💡 <strong>玩法與更新說明：</strong><br>
+          該字詞會在歌詞中變為您設定的顏色。點擊「⚡ 自動帶入譜面動作」，系統即會將該動作填入下方圓圈中（支援即時同步與刪除更新）。
+        </div>
+
+        <div class="flex justify-end gap-2.5 pt-2 border-t border-slate-100">
+          <button onclick="closeActionWordModal()" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition">取消</button>
+          <button onclick="submitActionWordRule()" class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow transition active:scale-95">儲存規則</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 批量貼入歌詞彈窗 -->
+  <div id="batchLyricModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-xl w-full p-5 md:p-6 transition-all">
+      <div class="flex items-center justify-between pb-2.5 mb-3 border-b border-slate-100">
+        <div class="flex items-center gap-2">
+          <span class="text-2xl">📋</span>
+          <div>
+            <h3 class="text-base font-black text-slate-800">批量貼入歌詞</h3>
+            <p class="text-xs text-slate-500">自動分行建立小節與空白格子</p>
+          </div>
+        </div>
+        <button onclick="closeBatchLyricModal()" class="text-slate-400 hover:text-slate-600 text-lg font-bold w-7 h-7 rounded-full flex items-center justify-center hover:bg-slate-100">✕</button>
+      </div>
+
+      <div class="space-y-3 text-xs">
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <label class="font-bold text-slate-700">歌詞文字（每行自動切為一小節）：</label>
+            <div class="flex gap-2">
+              <button onclick="fillLittleStarExample()" class="text-indigo-600 hover:text-indigo-800 font-bold text-[11px]">✨ 填入《小星星》範例</button>
+            </div>
+          </div>
+          <textarea id="batchLyricText" rows="4" class="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="請在此貼上或輸入多行歌詞..."></textarea>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">預設每小節拍數：</label>
+            <select id="batchBeatsSelect" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-1.5 font-bold text-slate-700 outline-none">
+              <option value="4" selected>4 拍</option>
+              <option value="3">3 拍</option>
+              <option value="2">2 拍</option>
+              <option value="6">6 拍</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">預設織度（行數 1~5）：</label>
+            <input type="number" id="batchTextureInput" min="1" max="5" value="1" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-1.5 font-bold text-slate-700 outline-none">
+          </div>
+        </div>
+
+        <label class="flex items-center gap-2 cursor-pointer pt-1">
+          <input type="checkbox" id="batchClearExisting" class="accent-indigo-600" checked>
+          <span class="font-bold text-slate-700">替換並清除現有全部小節</span>
+        </label>
+
+        <div class="flex justify-end gap-2.5 pt-2 border-t border-slate-100">
+          <button onclick="closeBatchLyricModal()" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition">取消</button>
+          <button onclick="executeBatchLyrics()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow transition active:scale-95">確認匯入</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 自訂樂器 / 符號庫彈窗 -->
+  <div id="customItemModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl shadow-2xl border border-slate-200 max-w-md w-full p-5 md:p-6 transition-all">
+      <div class="flex items-center justify-between pb-2.5 mb-3 border-b border-slate-100">
+        <div class="flex items-center gap-2">
+          <span class="text-2xl">✨</span>
+          <div>
+            <h3 class="text-base font-black text-slate-800">建立自訂樂器或符號</h3>
+            <p class="text-xs text-slate-500">上傳圖片或輸入 Emoji/文字加入庫中</p>
+          </div>
+        </div>
+        <button onclick="closeCustomItemModal()" class="text-slate-400 hover:text-slate-600 text-lg font-bold w-7 h-7 rounded-full flex items-center justify-center hover:bg-slate-100">✕</button>
+      </div>
+
+      <div class="space-y-3.5 text-xs">
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">樂器或聲響名稱 (如：木魚、轉圈、摸頭):</label>
+          <input type="text" id="customItemName" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-slate-800 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="例如：木魚">
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">符號來源方式:</label>
+          <div class="flex gap-2">
+            <label class="flex items-center gap-1.5 cursor-pointer bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
+              <input type="radio" name="customTypeRadio" value="emoji" checked onchange="toggleCustomTypeUI(this.value)">
+              <span class="font-bold text-slate-700">Emoji / 文字符號</span>
+            </label>
+            <label class="flex items-center gap-1.5 cursor-pointer bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
+              <input type="radio" name="customTypeRadio" value="image" onchange="toggleCustomTypeUI(this.value)">
+              <span class="font-bold text-slate-700">上傳自訂圖片</span>
+            </label>
+          </div>
+        </div>
+
+        <div id="customEmojiSection">
+          <label class="block font-bold text-slate-700 mb-1">輸入 Emoji 或單字 (如：🪵, 🙆, 🔔):</label>
+          <input type="text" id="customItemEmoji" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-center text-xl font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="🪵">
+        </div>
+
+        <div id="customImageSection" class="hidden">
+          <label class="block font-bold text-slate-700 mb-1">選擇本機圖片檔案 (PNG, JPG, SVG):</label>
+          <input type="file" id="customItemFileInput" accept="image/*" class="w-full text-xs text-slate-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer">
+          <div id="customImagePreviewWrap" class="mt-2 hidden flex items-center justify-center p-2 bg-slate-100 rounded-xl">
+            <img id="customImagePreview" class="w-12 h-12 object-contain" alt="預覽">
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-2.5 pt-2 border-t border-slate-100">
+          <button onclick="closeCustomItemModal()" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition">取消</button>
+          <button onclick="submitCustomItem()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow transition active:scale-95">加入資料庫</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const PALETTES_DATA = {
+      handbell: [
+        { num: '1', solfege: 'Do', pitch: 'C',  id: 'color-1', hex: '#c61a09', isHigh: false },
+        { num: '2', solfege: 'Re', pitch: 'D',  id: 'color-2', hex: '#f26800', isHigh: false },
+        { num: '3', solfege: 'Mi', pitch: 'E',  id: 'color-3', hex: '#ffdf00', isHigh: false },
+        { num: '4', solfege: 'Fa', pitch: 'F',  id: 'color-4', hex: '#78be20', isHigh: false },
+        { num: '5', solfege: 'Sol',pitch: 'G',  id: 'color-5', hex: '#00b0f0', isHigh: false },
+        { num: '6', solfege: 'La', pitch: 'A',  id: 'color-6', hex: '#0020d0', isHigh: false },
+        { num: '7', solfege: 'Ti', pitch: 'B',  id: 'color-7', hex: '#702082', isHigh: false },
+        { num: '8', solfege: '高Do',pitch: 'C5', id: 'color-8', hex: '#c61a09', isHigh: true }
+      ],
+      boomwhackers: [
+        { num: '1', solfege: 'Do', pitch: 'C',  id: 'color-1', hex: '#c61a09', isHigh: false },
+        { num: '2', solfege: 'Re', pitch: 'D',  id: 'color-2', hex: '#f26800', isHigh: false },
+        { num: '3', solfege: 'Mi', pitch: 'E',  id: 'color-3', hex: '#ffdf00', isHigh: false },
+        { num: '4', solfege: 'Fa', pitch: 'F',  id: 'color-4', hex: '#78be20', isHigh: false },
+        { num: '5', solfege: 'Sol',pitch: 'G',  id: 'color-5', hex: '#1e7e34', isHigh: false },
+        { num: '6', solfege: 'La', pitch: 'A',  id: 'color-6', hex: '#00b0f0', isHigh: false },
+        { num: '7', solfege: 'Ti', pitch: 'B',  id: 'color-7', hex: '#702082', isHigh: false },
+        { num: '8', solfege: '高Do',pitch: 'C5', id: 'color-8', hex: '#c61a09', isHigh: true }
+      ]
+    };
+
+    let currentColorSystem = 'handbell';
+    let highNoteAppearance = 'bordered';
+    let currentCircleStyle = 'number';
+
+    const CHORD_DATABASE = [
+      { name: 'C',  nums: '1 3 5', rootToHigh: [{ colorId: 'color-1' }, { colorId: 'color-3' }, { colorId: 'color-5' }] },
+      { name: 'G',  nums: '5 7 2', rootToHigh: [{ colorId: 'color-5' }, { colorId: 'color-7' }, { colorId: 'color-2' }] },
+      { name: 'F',  nums: '4 6 8', rootToHigh: [{ colorId: 'color-4' }, { colorId: 'color-6' }, { colorId: 'color-8' }] },
+      { name: 'Em', nums: '3 5 7', rootToHigh: [{ colorId: 'color-3' }, { colorId: 'color-5' }, { colorId: 'color-7' }] },
+      { name: 'Am', nums: '6 1 3', rootToHigh: [{ colorId: 'color-6' }, { colorId: 'color-1' }, { colorId: 'color-3' }] },
+      { name: 'Dm', nums: '2 4 6', rootToHigh: [{ colorId: 'color-2' }, { colorId: 'color-4' }, { colorId: 'color-6' }] }
+    ];
+
+    const PERCUSSION_SVGS = {
+      maracas: `
+        <svg viewBox="0 0 40 40" class="w-full h-full p-0.5" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <g transform="rotate(-25 20 20)">
+            <ellipse cx="14" cy="14" rx="7.5" ry="9" fill="#f59e0b" stroke="#78350f" stroke-width="1.8"/>
+            <path d="M8 14 Q14 11 20 14" stroke="#dc2626" stroke-width="1.5" fill="none"/>
+            <path d="M8 17 Q14 14 20 17" stroke="#2563eb" stroke-width="1.5" fill="none"/>
+            <rect x="12" y="22" width="4" height="12" rx="2" fill="#d97706" stroke="#78350f" stroke-width="1.5"/>
+          </g>
+          <g transform="rotate(25 20 20)">
+            <ellipse cx="26" cy="14" rx="7.5" ry="9" fill="#10b981" stroke="#064e3b" stroke-width="1.8"/>
+            <path d="M20 14 Q26 11 32 14" stroke="#f59e0b" stroke-width="1.5" fill="none"/>
+            <rect x="24" y="22" width="4" height="12" rx="2" fill="#b45309" stroke="#78350f" stroke-width="1.5"/>
+          </g>
+        </svg>
+      `,
+      castanets: `
+        <svg viewBox="0 0 40 40" class="w-full h-full p-0.5" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <ellipse cx="20" cy="16" rx="12" ry="8" fill="#92400e" stroke="#451a03" stroke-width="1.8"/>
+          <ellipse cx="20" cy="15" rx="10" ry="6" fill="#b45309"/>
+          <ellipse cx="20" cy="25" rx="12" ry="8" fill="#78350f" stroke="#451a03" stroke-width="1.8"/>
+          <ellipse cx="20" cy="24" rx="10" ry="6" fill="#9a3412"/>
+          <circle cx="20" cy="8" r="3" fill="#dc2626"/>
+          <path d="M18 10 L14 17 M22 10 L26 17" stroke="#dc2626" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+      `,
+      drum: `
+        <svg viewBox="0 0 40 40" class="w-full h-full p-0.5" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <ellipse cx="20" cy="13" rx="14" ry="5.5" fill="#fef3c7" stroke="#b45309" stroke-width="1.8"/>
+          <path d="M6 13 L6 25 C6 28 12 31 20 31 C28 31 34 28 34 25 L34 13" fill="#dc2626" stroke="#991b1b" stroke-width="1.8"/>
+          <path d="M6 16 L13 29 M13 18 L20 31 M20 18 L27 29 M27 18 L34 25" stroke="#fef3c7" stroke-width="1.5"/>
+          <ellipse cx="20" cy="25" rx="14" ry="5.5" fill="none" stroke="#991b1b" stroke-width="1.8"/>
+        </svg>
+      `,
+      handbell: `
+        <svg viewBox="0 0 40 40" class="w-full h-full p-0.5" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="18" y="5" width="4" height="11" rx="2" fill="#1e293b" stroke="#0f172a" stroke-width="1.5"/>
+          <ellipse cx="20" cy="6" rx="3.5" ry="1.5" fill="#64748b"/>
+          <path d="M16 16 C16 14 24 14 24 16 C25 21 31 24 31 28 L9 28 C9 24 15 21 16 16 Z" fill="#fbbf24" stroke="#b45309" stroke-width="1.8"/>
+          <ellipse cx="20" cy="28" rx="11" ry="3" fill="#f59e0b" stroke="#b45309" stroke-width="1.8"/>
+          <circle cx="20" cy="31" r="2.5" fill="#92400e"/>
+        </svg>
+      `,
+      triangle: `
+        <svg viewBox="0 0 40 40" class="w-full h-full p-0.5" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <line x1="20" y1="4" x2="20" y2="10" stroke="#f59e0b" stroke-width="2"/>
+          <path d="M20 10 L8 31 L29 31" stroke="#475569" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+          <line x1="31" y1="28" x2="22" y2="12" stroke="#475569" stroke-width="3" stroke-linecap="round"/>
+        </svg>
+      `,
+      snapHeart: `
+        <svg viewBox="0 0 40 40" class="w-full h-full p-0.5" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M18 10 C18 6.5 21 4.5 24 6 C26 7 26.5 10 24.5 13.5 L21 19 L16 15 C17.5 13 18 11.5 18 10 Z" fill="#fcd34d" stroke="#b45309" stroke-width="1.6" stroke-linejoin="round"/>
+          <path d="M22 13 C24 10.5 27 9.5 29 11.5 C31 13.5 29.5 17 26.5 20.5 L20 28 L14 22 L19.5 16 Z" fill="#fbbf24" stroke="#b45309" stroke-width="1.6" stroke-linejoin="round"/>
+          <path d="M14 22 L11 25 C9 27 9.5 31 12 33 C15 35 24 35 27 32 C30 29 31 24 29 20" fill="#f59e0b" stroke="#b45309" stroke-width="1.6" stroke-linejoin="round"/>
+          <path d="M20 24 C23 23 25.5 24.5 26 27" stroke="#b45309" stroke-width="1.4" stroke-linecap="round"/>
+          <path d="M18 28 C21 27 23.5 28.5 24 31" stroke="#b45309" stroke-width="1.4" stroke-linecap="round"/>
+          <path d="M22 2 C22 2 23.5 0 25 1 C26.5 2 25 3.5 23 5 C21 3.5 19.5 2 21 1 C22.5 0 22 2 22 2 Z" fill="#ef4444"/>
+        </svg>
+      `
+    };
+
+    const PERCUSSION_ITEMS = [
+      { id: 'clap',      name: '拍手',   renderType: 'emoji', emoji: '👏', selectEmoji: '👏' },
+      { id: 'fist',      name: '握拳',   renderType: 'emoji', emoji: '✊', selectEmoji: '✊' },
+      { id: 'point',     name: '指',     renderType: 'emoji', emoji: '👆', selectEmoji: '👆' },
+      { id: 'snap',      name: '響指',   renderType: 'svg',   svgKey: 'snapHeart', selectEmoji: '🫰' },
+      { id: 'stamp',     name: '踏腳',   renderType: 'emoji', emoji: '🦶', selectEmoji: '🦶' },
+      { id: 'thigh',     name: '拍腿',   renderType: 'emoji', emoji: '🦵', selectEmoji: '🦵' },
+      { id: 'wave',      name: '揮手',   renderType: 'emoji', emoji: '👋', selectEmoji: '👋' },
+      { id: 'drum',      name: '鼓',     renderType: 'svg',   svgKey: 'drum', selectEmoji: '🥁' },
+      { id: 'handbell',  name: '手搖鈴', renderType: 'svg',   svgKey: 'handbell', selectEmoji: '🔔' },
+      { id: 'maracas',   name: '沙鈴',   renderType: 'svg',   svgKey: 'maracas', selectEmoji: '🪇' },
+      { id: 'castanets', name: '響板',   renderType: 'svg',   svgKey: 'castanets', selectEmoji: '🪵' },
+      { id: 'triangle',  name: '三角鐵', renderType: 'svg',   svgKey: 'triangle', selectEmoji: '🔺' }
+    ];
+
+    let customPercussionList = [];
+    let uploadedImageData = null;
+    let actionWordRules = [];
+    let editingActionWordIndex = -1;
+
+    document.querySelectorAll('#actionWordColorPicker button').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        document.querySelectorAll('#actionWordColorPicker button').forEach(b => b.classList.remove('ring-2', 'ring-offset-1', 'ring-slate-400'));
+        e.target.classList.add('ring-2', 'ring-offset-1', 'ring-slate-400');
+        document.getElementById('actionWordSelectedColor').value = e.target.dataset.color;
+      });
+    });
+
+    document.addEventListener('click', (e) => {
+      const btn = document.getElementById('actionPercSelectBtn');
+      const dropdown = document.getElementById('actionPercDropdown');
+      if (btn && dropdown && !btn.contains(e.target) && !dropdown.contains(e.target)) {
+        dropdown.classList.add('hidden');
+      }
+    });
+
+    function initPercussionUI() {
+      const container = document.getElementById('percussionItems');
+      if (!container) return;
+      container.innerHTML = '';
+
+      const allItems = [...PERCUSSION_ITEMS, ...customPercussionList];
+
+      allItems.forEach(perc => {
+        const isSelected = currentMode.type === 'perc' && currentMode.data && currentMode.data.id === perc.id;
+
+        const btn = document.createElement('button');
+        btn.draggable = true;
+        btn.className = `flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-xs font-bold transition shadow-2xs select-none relative group ${
+          isSelected 
+            ? 'bg-amber-500 text-white border-amber-600 ring-2 ring-amber-300 scale-105' 
+            : 'bg-white hover:bg-amber-50/70 border-slate-200 text-slate-700'
+        }`;
+
+        let iconContent = '';
+        if (perc.renderType === 'emoji') {
+          iconContent = `<span class="text-base leading-none">${perc.emoji}</span>`;
+        } else if (perc.renderType === 'image') {
+          iconContent = `<img src="${perc.imgData}" class="w-5 h-5 object-contain rounded">`;
+        } else {
+          const svgCode = PERCUSSION_SVGS[perc.svgKey] || PERCUSSION_SVGS[perc.id] || PERCUSSION_SVGS.drum;
+          iconContent = `<span class="w-5 h-5 flex items-center justify-center">${svgCode}</span>`;
+        }
+
+        btn.innerHTML = `${iconContent} <span>${perc.name}</span>`;
+
+        if (perc.isCustom) {
+          const delBadge = document.createElement('span');
+          delBadge.className = 'hidden group-hover:inline-block ml-1 text-slate-400 hover:text-rose-500 font-bold';
+          delBadge.innerText = '✕';
+          delBadge.onclick = (e) => {
+            e.stopPropagation();
+            customPercussionList = customPercussionList.filter(c => c.id !== perc.id);
+            localStorage.setItem('customPercussionList_saved', JSON.stringify(customPercussionList));
+            initPercussionUI();
+            updateActionWordSelectOptions();
+          };
+          btn.appendChild(delBadge);
+        }
+
+        btn.addEventListener('dragstart', (e) => {
+          e.dataTransfer.setData('application/json', JSON.stringify({
+            type: 'perc',
+            id: perc.id,
+            renderType: perc.renderType,
+            emoji: perc.emoji || '',
+            svgKey: perc.svgKey || '',
+            imgData: perc.imgData || '',
+            name: perc.name
+          }));
+          e.dataTransfer.effectAllowed = 'copy';
+        });
+
+        btn.addEventListener('click', () => {
+          selectMode('perc', perc);
+        });
+
+        container.appendChild(btn);
+      });
+
+      renderActionWordTags();
+      updateActionWordSelectOptions();
+    }
+
+    function renderActionWordTags() {
+      const container = document.getElementById('actionWordsTagsContainer');
+      if (!container) return;
+      container.innerHTML = '';
+
+      if (actionWordRules.length === 0) {
+        container.innerHTML = `<span class="text-amber-800/60 font-semibold italic">目前尚未設定特定字詞規則，點擊右方「➕ 設定反應詞」即可開始自訂！</span>`;
+        return;
+      }
+
+      actionWordRules.forEach((rule, idx) => {
+        const tag = document.createElement('div');
+        tag.className = 'flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-xl border border-amber-300 shadow-2xs text-slate-800 font-bold';
+        
+        tag.innerHTML = `
+          <span>唱到「<strong style="color: ${rule.color}; font-weight: 900;">${rule.word}</strong>」➔</span>
+          <span class="flex items-center gap-1 text-slate-700 font-black">${rule.label}</span>
+          <button onclick="editActionWordRule(${idx})" class="text-slate-400 hover:text-blue-500 ml-1 font-black px-1" title="編輯此規則">✏️</button>
+          <button onclick="removeActionWordRule(${idx})" class="text-slate-400 hover:text-rose-500 font-black" title="移除此規則">✕</button>
+        `;
+        container.appendChild(tag);
+      });
+    }
+
+    function openActionWordModal() {
+      editingActionWordIndex = -1;
+      document.getElementById('actionWordModal').classList.remove('hidden');
+      document.getElementById('actionWordInput').value = '';
+      
+      document.querySelectorAll('#actionWordColorPicker button').forEach(b => b.classList.remove('ring-2', 'ring-offset-1', 'ring-slate-400'));
+      const firstColorBtn = document.querySelector('#actionWordColorPicker button[data-color="#ef4444"]');
+      if(firstColorBtn) firstColorBtn.classList.add('ring-2', 'ring-offset-1', 'ring-slate-400');
+      document.getElementById('actionWordSelectedColor').value = '#ef4444';
+
+      document.getElementById('actionPercSelectValue').value = 'none';
+      document.getElementById('actionPercSelectDisplay').innerHTML = `<span class="text-base">🚫</span> <span class="font-bold text-slate-800">無動作 (僅改變歌詞顏色)</span>`;
+
+      document.getElementById('actionWordInput').focus();
+    }
+
+    function editActionWordRule(idx) {
+      editingActionWordIndex = idx;
+      const rule = actionWordRules[idx];
+      
+      document.getElementById('actionWordModal').classList.remove('hidden');
+      document.getElementById('actionWordInput').value = rule.word;
+      
+      document.querySelectorAll('#actionWordColorPicker button').forEach(b => b.classList.remove('ring-2', 'ring-offset-1', 'ring-slate-400'));
+      const colorBtn = document.querySelector(`#actionWordColorPicker button[data-color="${rule.color}"]`);
+      if (colorBtn) colorBtn.classList.add('ring-2', 'ring-offset-1', 'ring-slate-400');
+      document.getElementById('actionWordSelectedColor').value = rule.color || '#ef4444';
+
+      document.getElementById('actionPercSelectValue').value = rule.percId;
+      const allItems = [{ id: 'none', name: '無動作 (僅改變歌詞顏色)', renderType: 'emoji', emoji: '🚫' }, ...PERCUSSION_ITEMS, ...customPercussionList];
+      const targetItem = allItems.find(i => i.id === rule.percId);
+      if (targetItem) {
+         let iconHtml = '';
+         if (targetItem.renderType === 'emoji') iconHtml = `<span class="text-base">${targetItem.emoji || targetItem.selectEmoji}</span>`;
+         else if (targetItem.renderType === 'image') iconHtml = `<img src="${targetItem.imgData}" class="w-5 h-5 object-contain rounded">`;
+         else {
+           const svgCode = PERCUSSION_SVGS[targetItem.svgKey] || PERCUSSION_SVGS[targetItem.id] || PERCUSSION_SVGS.drum;
+           iconHtml = `<span class="w-5 h-5 flex items-center justify-center">${svgCode}</span>`;
+         }
+         document.getElementById('actionPercSelectDisplay').innerHTML = `${iconHtml} <span class="font-bold text-slate-800">${targetItem.name}</span>`;
+      }
+
+      document.getElementById('actionWordInput').focus();
+    }
+
+    function closeActionWordModal() {
+      document.getElementById('actionWordModal').classList.add('hidden');
+      editingActionWordIndex = -1;
+    }
+
+    function updateActionWordSelectOptions() {
+      const dropdown = document.getElementById('actionPercDropdown');
+      if (!dropdown) return;
+      dropdown.innerHTML = '';
+
+      const allItems = [
+        { id: 'none', name: '無動作 (僅改變歌詞顏色)', renderType: 'emoji', emoji: '🚫' },
+        ...PERCUSSION_ITEMS, 
+        ...customPercussionList
+      ];
+
+      allItems.forEach(item => {
+        const opt = document.createElement('div');
+        opt.className = 'px-3 py-2 hover:bg-amber-50 cursor-pointer flex items-center gap-2 transition border-b border-slate-100 last:border-0';
+        
+        let iconHtml = '';
+        if (item.renderType === 'emoji') {
+          iconHtml = `<span class="text-base">${item.emoji || item.selectEmoji}</span>`;
+        } else if (item.renderType === 'image') {
+          iconHtml = `<img src="${item.imgData}" class="w-5 h-5 object-contain rounded">`;
+        } else {
+          const svgCode = PERCUSSION_SVGS[item.svgKey] || PERCUSSION_SVGS[item.id] || PERCUSSION_SVGS.drum;
+          iconHtml = `<span class="w-5 h-5 flex items-center justify-center">${svgCode}</span>`;
+        }
+
+        opt.innerHTML = `${iconHtml} <span class="font-bold text-slate-700">${item.name}</span>`;
+        
+        opt.onclick = () => {
+          document.getElementById('actionPercSelectValue').value = item.id;
+          document.getElementById('actionPercSelectDisplay').innerHTML = `${iconHtml} <span class="font-bold text-slate-800">${item.name}</span>`;
+          dropdown.classList.add('hidden');
+        };
+
+        dropdown.appendChild(opt);
+      });
+    }
+
+    function submitActionWordRule() {
+      const word = document.getElementById('actionWordInput').value.trim();
+      const percId = document.getElementById('actionPercSelectValue').value;
+      const color = document.getElementById('actionWordSelectedColor').value;
+
+      if (!word) return;
+
+      const allItems = [...PERCUSSION_ITEMS, ...customPercussionList];
+      const targetPerc = allItems.find(p => p.id === percId);
+      const label = percId === 'none' ? '無動作' : (targetPerc ? targetPerc.name : '動作');
+
+      if (editingActionWordIndex >= 0) {
+        actionWordRules[editingActionWordIndex] = { word, percId, color, label };
+        editingActionWordIndex = -1;
+      } else {
+        actionWordRules.push({ word, percId, color, label });
+      }
+
+      closeActionWordModal();
+      renderActionWordTags();
+      refreshLyricActionTags();
+    }
+
+    function removeActionWordRule(idx) {
+      actionWordRules.splice(idx, 1);
+      renderActionWordTags();
+      refreshLyricActionTags();
+    }
+
+    function formatLyricHtmlWithRules(text) {
+      if (!text) return '';
+      let formatted = text;
+
+      actionWordRules.forEach(rule => {
+        if (!rule.word) return;
+        const fallbackColor = rule.color || '#ef4444'; 
+        const regex = new RegExp(rule.word, 'g');
+        formatted = formatted.replace(regex, `<span class="lyric-action-word" style="color: ${fallbackColor}; font-weight: 900;">${rule.word}</span>`);
+      });
+
+      return formatted;
+    }
+
+    function refreshLyricActionTags() {
+      document.querySelectorAll('.measure-card').forEach(card => {
+        const box = card.querySelector('.lyric-justified-box');
+        if (box) {
+          const rawText = box.innerText.trim();
+          box.innerHTML = formatLyricHtmlWithRules(rawText);
+        }
+      });
+    }
+
+    function applyActionWordsToSheetNotes() {
+      saveUndoState();
+      const allItems = [...PERCUSSION_ITEMS, ...customPercussionList];
+
+      document.querySelectorAll('.measure-card').forEach(card => {
+        const box = card.querySelector('.lyric-justified-box');
+        if (!box) return;
+        const text = box.innerText.trim();
+        const cols = card.querySelectorAll('.beat-column');
+        const beatCount = cols.length;
+
+        cols.forEach(col => {
+          col.querySelectorAll('.bell-node').forEach(node => {
+            if (node.dataset.kind === 'perc') {
+              clearNode(node);
+            }
+          });
+        });
+
+        if (actionWordRules.length === 0 || !text || beatCount === 0) return;
+
+        actionWordRules.forEach(rule => {
+          if (rule.percId === 'none') return; 
+
+          let pos = text.indexOf(rule.word);
+          while (pos !== -1) {
+            const ratio = pos / Math.max(1, text.length - 1);
+            const targetBeatIdx = Math.min(beatCount - 1, Math.round(ratio * (beatCount - 1)));
+            const targetCol = cols[targetBeatIdx];
+
+            if (targetCol) {
+              const nodes = targetCol.querySelectorAll('.bell-node');
+              const targetNode = nodes[nodes.length - 1]; 
+              const percObj = allItems.find(p => p.id === rule.percId);
+              if (targetNode && percObj) {
+                applyToneOrPercToNode(targetNode, {
+                  kind: 'perc',
+                  id: percObj.id,
+                  renderType: percObj.renderType,
+                  emoji: percObj.emoji || '',
+                  svgKey: percObj.svgKey || '',
+                  imgData: percObj.imgData || '',
+                  name: percObj.name
+                }, targetCol.dataset.subdivided === 'true');
+              }
+            }
+            pos = text.indexOf(rule.word, pos + rule.word.length);
+          }
+        });
+      });
+    }
+
+    function toggleActionTagsVisibility(show) {
+      if (show) {
+        document.body.classList.remove('hide-action-tags');
+      } else {
+        document.body.classList.add('hide-action-tags');
+      }
+    }
+
+    function fillLittleStarExample() {
+      document.getElementById('batchLyricText').value = 
+`一閃一閃亮晶晶
+滿天都是小星星
+掛在天上放光明
+好像許多小眼睛`;
+    }
+
+    function openCustomItemModal() {
+      document.getElementById('customItemModal').classList.remove('hidden');
+      document.getElementById('customItemName').focus();
+    }
+
+    function closeCustomItemModal() {
+      document.getElementById('customItemModal').classList.add('hidden');
+      document.getElementById('customItemName').value = '';
+      document.getElementById('customItemEmoji').value = '';
+      document.getElementById('customItemFileInput').value = '';
+      document.getElementById('customImagePreviewWrap').classList.add('hidden');
+      uploadedImageData = null;
+    }
+
+    function toggleCustomTypeUI(type) {
+      if (type === 'emoji') {
+        document.getElementById('customEmojiSection').classList.remove('hidden');
+        document.getElementById('customImageSection').classList.add('hidden');
+      } else {
+        document.getElementById('customEmojiSection').classList.add('hidden');
+        document.getElementById('customImageSection').classList.remove('hidden');
+      }
+    }
+
+    document.getElementById('customItemFileInput')?.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          uploadedImageData = evt.target.result;
+          document.getElementById('customImagePreview').src = uploadedImageData;
+          document.getElementById('customImagePreviewWrap').classList.remove('hidden');
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
+    function submitCustomItem() {
+      const name = document.getElementById('customItemName').value.trim();
+      if (!name) return;
+
+      const typeRadio = document.querySelector('input[name="customTypeRadio"]:checked').value;
+      const newItemId = 'custom_' + Date.now();
+
+      if (typeRadio === 'emoji') {
+        const emojiVal = document.getElementById('customItemEmoji').value.trim() || '🎵';
+        const newItem = {
+          id: newItemId,
+          name: name,
+          renderType: 'emoji',
+          emoji: emojiVal,
+          isCustom: true
+        };
+        customPercussionList.push(newItem);
+        localStorage.setItem('customPercussionList_saved', JSON.stringify(customPercussionList));
+        closeCustomItemModal();
+        initPercussionUI();
+        selectMode('perc', newItem);
+
+        const dropdownVal = document.getElementById('actionPercSelectValue');
+        const display = document.getElementById('actionPercSelectDisplay');
+        if (dropdownVal && display) {
+            dropdownVal.value = newItem.id;
+            display.innerHTML = `<span class="text-base">${newItem.emoji}</span> <span class="font-bold text-slate-800">${newItem.name}</span>`;
+        }
+      } else {
+        if (!uploadedImageData) return;
+        const newItem = {
+          id: newItemId,
+          name: name,
+          renderType: 'image',
+          imgData: uploadedImageData,
+          isCustom: true
+        };
+        customPercussionList.push(newItem);
+        localStorage.setItem('customPercussionList_saved', JSON.stringify(customPercussionList));
+        closeCustomItemModal();
+        initPercussionUI();
+        selectMode('perc', newItem);
+
+        const dropdownVal = document.getElementById('actionPercSelectValue');
+        const display = document.getElementById('actionPercSelectDisplay');
+        if (dropdownVal && display) {
+            dropdownVal.value = newItem.id;
+            display.innerHTML = `<img src="${newItem.imgData}" class="w-5 h-5 object-contain rounded"> <span class="font-bold text-slate-800">${newItem.name}</span>`;
+        }
+      }
+    }
+
+    function initChordUI() {
+      const container = document.getElementById('chordButtonsContainer');
+      if (!container) return;
+      container.innerHTML = '';
+
+      CHORD_DATABASE.forEach(chord => {
+        const isSelected = currentMode.type === 'chord' && currentMode.data && currentMode.data.name === chord.name;
+
+        const btn = document.createElement('div');
+        btn.draggable = true;
+        btn.className = `p-2 rounded-xl border transition-all cursor-pointer select-none flex flex-col justify-between shadow-2xs ${
+          isSelected
+            ? 'bg-blue-600 text-white border-blue-600 ring-2 ring-blue-300 scale-105'
+            : 'bg-white hover:bg-indigo-50/60 border-indigo-100 text-slate-800'
+        }`;
+
+        btn.addEventListener('dragstart', (e) => {
+          e.dataTransfer.setData('application/json', JSON.stringify({
+            type: 'chord',
+            name: chord.name,
+            rootToHigh: chord.rootToHigh
+          }));
+          e.dataTransfer.effectAllowed = 'copy';
+        });
+
+        btn.addEventListener('click', () => {
+          selectMode('chord', chord);
+        });
+
+        const dotsHtml = chord.rootToHigh.map(t => {
+          const isWhite = (t.colorId === 'color-8' && highNoteAppearance === 'white' && currentColorSystem === 'handbell');
+          const cls = isWhite ? 'color-8-white' : (t.colorId === 'color-8' ? 'color-8-bordered' : t.colorId);
+          return `<span class="w-4 h-4 rounded-full inline-block shadow-xs ${cls}"></span>`;
+        }).join('');
+
+        btn.innerHTML = `
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-sm font-black tracking-tight">${chord.name}</span>
+            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded ${isSelected ? 'bg-blue-500 text-white' : 'bg-indigo-50 text-indigo-700'}">${chord.nums}</span>
+          </div>
+          <div class="flex items-center justify-center gap-1.5 py-1 bg-black/5 rounded-lg">
+            ${dotsHtml}
+          </div>
+        `;
+
+        container.appendChild(btn);
+      });
+    }
+
+    let currentMode = {
+      type: 'cycle',
+      data: null
+    };
+
+    let globalDefaultBeats = 4;
+    let currentZoomLevel = 1.0;
+    let isPresentationActive = false;
+
+    const undoStack = [];
+    const MAX_UNDO = 30;
+
+    function saveUndoState() {
+      const state = captureCurrentMeasuresState();
+      undoStack.push(JSON.stringify(state));
+      if (undoStack.length > MAX_UNDO) undoStack.shift();
+      updateUndoButtonState();
+    }
+
+    function undoState() {
+      if (undoStack.length === 0) return;
+      const prev = undoStack.pop();
+      updateUndoButtonState();
+      try {
+        const parsed = JSON.parse(prev);
+        restoreMeasuresFromState(parsed);
+      } catch (e) {
+        console.error('Undo parse error', e);
+      }
+    }
+
+    function updateUndoButtonState() {
+      const btn = document.getElementById('undoBtn');
+      if (btn) btn.disabled = (undoStack.length === 0);
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.code === 'Space' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA' && !e.target.isContentEditable) {
+        e.preventDefault();
+        toggleMetronome();
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        if (!e.shiftKey) {
+          e.preventDefault();
+          undoState();
+        }
+      }
+    });
+
+    let lastTapTime = 0;
+    document.addEventListener('touchend', (e) => {
+      if (e.target.closest('button') || e.target.closest('input') || e.target.closest('textarea') || e.target.closest('select') || e.target.isContentEditable) {
+        return;
+      }
+      const currentTime = new Date().getTime();
+      const tapGap = currentTime - lastTapTime;
+      if (tapGap < 350 && tapGap > 0) {
+        e.preventDefault();
+        toggleMetronome();
+      }
+      lastTapTime = currentTime;
+    });
+
+    let audioCtx = null;
+    let isPlayingMetronome = false;
+    let metronomeBpm = 80;
+    let metronomeTimer = null;
+    let currentStepIndex = 0;
+    let userScrollingSuppressedUntil = 0;
+
+    window.addEventListener('wheel', () => {
+      userScrollingSuppressedUntil = Date.now() + 3000;
+    }, { passive: true });
+    window.addEventListener('touchmove', () => {
+      userScrollingSuppressedUntil = Date.now() + 3000;
+    }, { passive: true });
+
+    function getAudioContext() {
+      if (!audioCtx) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContextClass();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      return audioCtx;
+    }
+
+    function playTickSound(isFirstBeatOfMeasure = false, isSubBeat = false) {
+      const isMuted = !document.getElementById('metronomeMuteToggle').checked;
+      if (isMuted) return;
+
+      try {
+        const ctx = getAudioContext();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        if (isFirstBeatOfMeasure) osc.frequency.value = 940;
+        else if (isSubBeat) osc.frequency.value = 380;
+        else osc.frequency.value = 520;
+
+        gain.gain.setValueAtTime(0.24, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.06);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.06);
+      } catch (err) {}
+    }
+
+    function updateBPM(val) {
+      metronomeBpm = parseInt(val, 10);
+      document.getElementById('bpmSlider').value = metronomeBpm;
+      document.getElementById('bpmValueLabel').innerHTML = `${metronomeBpm} <span class="text-[9px] text-slate-400">BPM</span>`;
+      
+      const presSlider = document.getElementById('presBpmSlider');
+      const presLabel = document.getElementById('presBpmLabel');
+      if (presSlider) presSlider.value = metronomeBpm;
+      if (presLabel) presLabel.innerHTML = `${metronomeBpm} <span class="text-[8px] text-slate-400">BPM</span>`;
+
+      if (isPlayingMetronome) restartMetronomeTimer();
+    }
+
+    function toggleMetronome() {
+      if (isPlayingMetronome) stopMetronome();
+      else startMetronome();
+    }
+
+    function startMetronome() {
+      getAudioContext();
+      isPlayingMetronome = true;
+      updatePlayButtons(true);
+      runMetronomeStep(true);
+      restartMetronomeTimer();
+    }
+
+    function stopMetronome() {
+      isPlayingMetronome = false;
+      if (metronomeTimer) clearTimeout(metronomeTimer);
+      metronomeTimer = null;
+      updatePlayButtons(false);
+    }
+
+    function resetMetronomeProgress() {
+      currentStepIndex = 0;
+      updateProgressSlidersAndDisplay();
+      if (isPlayingMetronome) {
+        runMetronomeStep(true);
+        restartMetronomeTimer();
+      } else {
+        runMetronomeStep(false);
+      }
+    }
+
+    function restartMetronomeTimer() {
+      if (metronomeTimer) clearTimeout(metronomeTimer);
+      if (!isPlayingMetronome) return;
+
+      const allSteps = getAllGuideSteps();
+      if (allSteps.length === 0) return;
+
+      const currentStep = allSteps[currentStepIndex % allSteps.length];
+      const beatDurationMs = (60 / metronomeBpm) * 1000;
+      const stepDuration = currentStep.isSubdivided ? (beatDurationMs / 2) : beatDurationMs;
+
+      metronomeTimer = setTimeout(() => {
+        currentStepIndex++;
+        runMetronomeStep(true);
+        restartMetronomeTimer();
+      }, stepDuration);
+    }
+
+    function updatePlayButtons(playing) {
+      const pIcon = document.getElementById('playIcon');
+      const pText = document.getElementById('playText');
+      const presIcon = document.getElementById('presPlayIcon');
+      const presText = document.getElementById('presPlayText');
+      const fabIcon = document.getElementById('fabPlayIcon');
+      const fabText = document.getElementById('fabPlayText');
+
+      if (playing) {
+        if (pIcon) pIcon.innerText = '⏸';
+        if (pText) pText.innerText = '暫停演奏導引';
+        if (presIcon) presIcon.innerText = '⏸';
+        if (presText) presText.innerText = '暫停';
+        if (fabIcon) fabIcon.innerText = '⏸';
+        if (fabText) fabText.innerText = '暫停';
+      } else {
+        if (pIcon) pIcon.innerText = '▶';
+        if (pText) pText.innerText = '開始演奏導引';
+        if (presIcon) presIcon.innerText = '▶';
+        if (presText) presText.innerText = '導引';
+        if (fabIcon) fabIcon.innerText = '▶';
+        if (fabText) fabText.innerText = '演奏導引';
+      }
+    }
+
+    function removeBeatGuideIndicators() {
+      document.querySelectorAll('.beat-step-target').forEach(el => {
+        el.classList.remove('active-beat');
+      });
+      document.querySelectorAll('.beat-line-guide').forEach(line => line.remove());
+    }
+
+    function getAllGuideSteps() {
+      const measureCards = Array.from(document.querySelectorAll('.measure-card'));
+      const steps = [];
+
+      measureCards.forEach((card, mIdx) => {
+        const beatCols = card.querySelectorAll('.beat-column');
+        beatCols.forEach((col, bIdx) => {
+          const isDivided = col.dataset.subdivided === 'true';
+          const isFirstBeat = (bIdx === 0);
+
+          if (isDivided) {
+            const subCols = col.querySelectorAll('.sub-beat-column');
+            if (subCols.length === 2) {
+              steps.push({
+                measureIndex: mIdx,
+                beatIndex: bIdx,
+                subIndex: 0,
+                isSubdivided: true,
+                isFirstBeatOfMeasure: isFirstBeat,
+                isSubBeat: false,
+                element: subCols[0],
+                parentColumn: col
+              });
+              steps.push({
+                measureIndex: mIdx,
+                beatIndex: bIdx,
+                subIndex: 1,
+                isSubdivided: true,
+                isFirstBeatOfMeasure: false,
+                isSubBeat: true,
+                element: subCols[1],
+                parentColumn: col
+              });
+            }
+          } else {
+            steps.push({
+              measureIndex: mIdx,
+              beatIndex: bIdx,
+              subIndex: 0,
+              isSubdivided: false,
+              isFirstBeatOfMeasure: isFirstBeat,
+              isSubBeat: false,
+              element: col,
+              parentColumn: col
+            });
+          }
+        });
+      });
+      return steps;
+    }
+
+    function onProgressSliderChange(val) {
+      currentStepIndex = parseInt(val, 10);
+      updateProgressSlidersAndDisplay();
+      runMetronomeStep(isPlayingMetronome);
+      if (isPlayingMetronome) restartMetronomeTimer();
+    }
+
+    function updateProgressSlidersAndDisplay() {
+      const allSteps = getAllGuideSteps();
+      const total = allSteps.length;
+      if (total === 0) return;
+
+      const normIdx = currentStepIndex % total;
+      
+      const slider1 = document.getElementById('beatProgressSlider');
+      const label1 = document.getElementById('beatProgressLabel');
+      const slider2 = document.getElementById('presProgressSlider');
+      const label2 = document.getElementById('presProgressLabel');
+
+      [slider1, slider2].forEach(s => {
+        if (s) {
+          s.max = total - 1;
+          s.value = normIdx;
+        }
+      });
+
+      const text = `${normIdx + 1} / ${total}`;
+      if (label1) label1.innerText = text;
+      if (label2) label2.innerText = text;
+    }
+
+    function runMetronomeStep(triggerSound = true) {
+      removeBeatGuideIndicators();
+
+      const allSteps = getAllGuideSteps();
+      if (allSteps.length === 0) return;
+
+      const total = allSteps.length;
+      const targetStepIdx = ((currentStepIndex % total) + total) % total;
+      const currentStep = allSteps[targetStepIdx];
+      const targetEl = currentStep.element;
+
+      targetEl.classList.add('active-beat');
+
+      const guideLine = document.createElement('div');
+      guideLine.className = 'beat-line-guide';
+      targetEl.appendChild(guideLine);
+
+      updateProgressSlidersAndDisplay();
+
+      if (triggerSound) {
+        playTickSound(currentStep.isFirstBeatOfMeasure, currentStep.isSubBeat);
+      }
+
+      if (Date.now() > userScrollingSuppressedUntil) {
+        targetEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+      }
+    }
+
+    function toggleGuideLineVisibility(show) {
+      if (show) {
+        document.body.classList.remove('hide-guide-line');
+      } else {
+        document.body.classList.add('hide-guide-line');
+      }
+    }
+
+    function changeCircleStyle(style) {
+      currentCircleStyle = style;
+      refreshAllMeasureNodesColor();
+      initPaletteUI();
+    }
+
+    function changeColorSystem(sys) {
+      saveUndoState();
+      currentColorSystem = sys;
+      applyRootPaletteVars();
+      initChordUI();
+      initPaletteUI();
+      refreshAllMeasureNodesColor();
+    }
+
+    function changeHighNoteAppearance(app) {
+      saveUndoState();
+      highNoteAppearance = app;
+      refreshAllMeasureNodesColor();
+      initChordUI();
+      initPaletteUI();
+    }
+
+    function applyRootPaletteVars() {
+      const root = document.documentElement;
+      const palette = PALETTES_DATA[currentColorSystem];
+      root.style.setProperty('--c-red', palette[0].hex);
+      root.style.setProperty('--c-orange', palette[1].hex);
+      root.style.setProperty('--c-yellow', palette[2].hex);
+      root.style.setProperty('--c-green', palette[3].hex);
+      root.style.setProperty('--c-cyan', palette[4].hex);
+      root.style.setProperty('--c-blue', palette[5].hex);
+      root.style.setProperty('--c-purple', palette[6].hex);
+      root.style.setProperty('--c-high-red', palette[7].hex);
+
+      const wrap = document.getElementById('highNoteOptionWrap');
+      if (wrap) {
+        wrap.style.display = (currentColorSystem === 'handbell') ? 'flex' : 'none';
+      }
+    }
+
+    function refreshAllMeasureNodesColor() {
+      document.querySelectorAll('.bell-node').forEach(node => {
+        const toneId = node.dataset.toneId;
+        const isHalfBeat = node.closest('.sub-beat-column') !== null;
+        if (toneId) {
+          applyToneOrPercToNode(node, { kind: 'tone', id: toneId }, isHalfBeat);
+        }
+      });
+    }
+
+    function changeZoom(delta) {
+      currentZoomLevel = Math.min(1.5, Math.max(0.65, currentZoomLevel + delta));
+      applyZoom();
+    }
+
+    function resetZoom() {
+      currentZoomLevel = 1.0;
+      applyZoom();
+    }
+
+    function applyZoom() {
+      const pct = Math.round(currentZoomLevel * 100) + '%';
+      document.getElementById('sheetScaleWrapper').style.transform = `scale(${currentZoomLevel})`;
+      document.getElementById('zoomDisplayLabel').innerText = pct;
+      const pLabel = document.getElementById('presZoomDisplayLabel');
+      if (pLabel) pLabel.innerText = pct;
+    }
+
+    function exportToPDF() {
+      const element = document.getElementById('sheetContainer');
+      removeBeatGuideIndicators();
+
+      document.body.classList.add('presentation-mode');
+
+      const opt = {
+        margin:       [10, 10, 10, 10],
+        filename:     '彩色和弦譜_身體打擊_打擊樂器譜.pdf',
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true },
+        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'landscape' }
+      };
+
+      html2pdf().set(opt).from(element).save().then(() => {
+        if (!isPresentationActive) {
+          document.body.classList.remove('presentation-mode');
+        }
+      }).catch(err => {
+        console.error('PDF export error', err);
+        if (!isPresentationActive) {
+          document.body.classList.remove('presentation-mode');
+        }
+      });
+    }
+
+    function saveProjectFile() {
+      const state = captureCurrentMeasuresState();
+      state.customPercussions = customPercussionList;
+      state.circleStyle = currentCircleStyle;
+      state.actionWordRules = actionWordRules;
+
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `和弦打擊樂譜_${new Date().toISOString().slice(0, 10)}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    }
+
+    function loadProjectFile(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const state = JSON.parse(e.target.result);
+          if (state.customPercussions) {
+            customPercussionList = state.customPercussions;
+            localStorage.setItem('customPercussionList_saved', JSON.stringify(customPercussionList));
+            initPercussionUI();
+          }
+          if (state.actionWordRules) {
+            actionWordRules = state.actionWordRules;
+            renderActionWordTags();
+          }
+          if (state.circleStyle) {
+            currentCircleStyle = state.circleStyle;
+            document.getElementById('circleStyleSelect').value = currentCircleStyle;
+          }
+          saveUndoState();
+          restoreMeasuresFromState(state);
+        } catch (err) {
+          alert('讀取失敗，請確認檔案格式是否正確！');
+        }
+      };
+      reader.readAsText(file);
+      event.target.value = '';
+    }
+
+    function resetToCleanState() {
+      if (!confirm('確定要清空整份樂譜並回到全空白狀態嗎？')) return;
+      localStorage.removeItem('auto_saved_sheet');
+      undoStack.length = 0;
+      updateUndoButtonState();
+      const grid = document.getElementById('measuresGrid');
+      grid.innerHTML = '';
+      initialBlankMeasures.forEach(m => renderMeasureElement(m));
+      updateProgressSlidersAndDisplay();
+    }
+
+    function initPaletteUI() {
+      const container = document.getElementById('paletteItems');
+      container.innerHTML = '';
+      const tones = PALETTES_DATA[currentColorSystem];
+
+      tones.forEach(tone => {
+        const isSelected = currentMode.type === 'single' && currentMode.data === tone.id;
+        
+        const itemWrap = document.createElement('div');
+        itemWrap.className = `flex flex-col items-center p-1 rounded-xl border transition-all cursor-pointer shadow-2xs select-none ${
+          isSelected 
+            ? 'bg-blue-50 border-blue-500 ring-2 ring-blue-400 scale-105' 
+            : 'bg-white border-slate-200/90 hover:border-slate-300 hover:bg-slate-50'
+        }`;
+
+        const isWhiteHigh = (tone.id === 'color-8' && highNoteAppearance === 'white' && currentColorSystem === 'handbell');
+        const colorClass = isWhiteHigh ? 'color-8-white' : (tone.id === 'color-8' ? 'color-8-bordered' : tone.id);
+
+        const ball = document.createElement('div');
+        ball.className = `w-9 h-9 md:w-10 md:h-10 rounded-full cursor-grab active:cursor-grabbing shadow-sm flex items-center justify-center font-black text-sm ${colorClass}`;
+        ball.draggable = true;
+
+        ball.innerHTML = getNodeLabelHtml(tone, false);
+
+        ball.addEventListener('dragstart', (e) => {
+          e.dataTransfer.setData('application/json', JSON.stringify({
+            type: 'single',
+            colorId: tone.id
+          }));
+          e.dataTransfer.effectAllowed = 'copy';
+        });
+
+        itemWrap.addEventListener('click', () => {
+          selectMode('single', tone.id);
+        });
+
+        const labelBox = document.createElement('div');
+        labelBox.className = 'text-center mt-0.5 leading-tight';
+        labelBox.innerHTML = `<div class="text-[10px] font-bold text-slate-700">${tone.num}.${tone.solfege}</div>`;
+
+        itemWrap.appendChild(ball);
+        itemWrap.appendChild(labelBox);
+        container.appendChild(itemWrap);
+      });
+
+      const cycleBtn = document.getElementById('btnCycleMode');
+      if (currentMode.type === 'cycle') {
+        cycleBtn.className = 'flex flex-col items-center justify-center p-1.5 rounded-xl border-2 border-blue-500 ring-2 ring-blue-300 bg-blue-50 text-blue-700 transition min-w-[58px] shadow-sm scale-105';
+      } else {
+        cycleBtn.className = 'flex flex-col items-center justify-center p-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 transition min-w-[58px] shadow-sm';
+      }
+
+      const eraserBtn = document.getElementById('btnEraser');
+      if (currentMode.type === 'eraser') {
+        eraserBtn.className = 'flex flex-col items-center justify-center p-1.5 rounded-xl border-2 border-blue-500 ring-2 ring-blue-300 bg-blue-50 text-blue-700 transition min-w-[58px] shadow-sm scale-105';
+      } else {
+        eraserBtn.className = 'flex flex-col items-center justify-center p-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 transition min-w-[58px] shadow-sm';
+      }
+
+      initPercussionUI();
+    }
+
+    function getNodeLabelHtml(tone, isHalfBeat = false) {
+      if (currentCircleStyle === 'colorOnly') return '';
+      if (currentCircleStyle === 'solfege') {
+        const text = tone.solfege;
+        return `<span class="${isHalfBeat ? 'text-xs' : 'text-sm md:text-base'} font-black leading-tight tracking-tighter">${text}</span>`;
+      }
+      if (currentCircleStyle === 'pitch') {
+        const text = tone.pitch;
+        return `<span class="${isHalfBeat ? 'text-xs' : 'text-base md:text-lg'} font-black leading-tight">${text}</span>`;
+      }
+      return `<span class="${isHalfBeat ? 'text-sm' : 'text-lg md:text-xl'} font-black leading-none">${tone.num}</span>`;
+    }
+
+    function selectMode(type, data = null) {
+      currentMode = { type, data };
+      initChordUI();
+      initPaletteUI();
+    }
+
+    function renderMeasureElement(measureData = null) {
+      const measureBox = document.createElement('div');
+      measureBox.className = 'measure-card border border-slate-200/90 bg-slate-50/70 rounded-2xl p-2.5 md:p-3.5 transition relative flex flex-col justify-between shadow-2xs';
+
+      let beatCount = measureData ? (measureData.beats || globalDefaultBeats) : globalDefaultBeats;
+      let rowCount = measureData ? (measureData.rows || 1) : 1; 
+
+      const toolbarRow = document.createElement('div');
+      toolbarRow.className = 'flex flex-wrap items-center justify-between gap-1.5 mb-2 text-xs text-slate-500 hide-on-presentation no-print';
+
+      const leftControls = document.createElement('div');
+      leftControls.className = 'flex flex-wrap items-center gap-1.5';
+
+      const beatWrap = document.createElement('div');
+      beatWrap.className = 'flex items-center gap-1 bg-white px-2 py-0.5 rounded-lg border border-slate-200';
+      beatWrap.innerHTML = `<span class="font-bold text-slate-600">拍數:</span>`;
+      const beatSelect = document.createElement('select');
+      beatSelect.className = 'text-xs font-bold text-slate-700 bg-transparent outline-none';
+      [2, 3, 4, 6].forEach(num => {
+        const opt = document.createElement('option');
+        opt.value = num;
+        opt.innerText = `${num} 拍`;
+        if (num === beatCount) opt.selected = true;
+        beatSelect.appendChild(opt);
+      });
+      beatWrap.appendChild(beatSelect);
+      leftControls.appendChild(beatWrap);
+
+      const textureCtrlWrap = document.createElement('div');
+      textureCtrlWrap.className = 'flex items-center gap-1 bg-white px-1.5 py-0.5 rounded-lg border border-slate-200';
+      
+      const rowCountBadge = document.createElement('span');
+      rowCountBadge.className = 'font-bold text-indigo-900 px-1 text-xs';
+      rowCountBadge.innerText = `${rowCount} 行織度`;
+
+      const addRowBtn = document.createElement('button');
+      addRowBtn.className = 'w-5 h-5 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center text-xs';
+      addRowBtn.innerText = '➕';
+
+      const removeRowBtn = document.createElement('button');
+      removeRowBtn.className = 'w-5 h-5 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold flex items-center justify-center text-xs';
+      removeRowBtn.innerText = '➖';
+
+      textureCtrlWrap.appendChild(removeRowBtn);
+      textureCtrlWrap.appendChild(rowCountBadge);
+      textureCtrlWrap.appendChild(addRowBtn);
+      leftControls.appendChild(textureCtrlWrap);
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-2 py-0.5 rounded-lg transition text-xs font-bold flex items-center gap-0.5';
+      deleteBtn.innerHTML = '<span>✕</span> 刪除小節';
+      deleteBtn.onclick = () => {
+        saveUndoState();
+        measureBox.remove();
+        updateProgressSlidersAndDisplay();
+      };
+
+      toolbarRow.appendChild(leftControls);
+      toolbarRow.appendChild(deleteBtn);
+      measureBox.appendChild(toolbarRow);
+
+      const lyricRow = document.createElement('div');
+      lyricRow.className = 'mb-2 w-full px-4';
+
+      const lyricBox = document.createElement('div');
+      lyricBox.contentEditable = "true";
+      lyricBox.className = 'lyric-justified-box kaiti-font font-black text-slate-900 transition';
+      lyricBox.innerHTML = formatLyricHtmlWithRules(measureData ? measureData.lyric : '請輸入歌詞');
+
+      function autoFitLyricText() {
+        const text = lyricBox.innerText.trim();
+        const len = text.length;
+        if (len <= 4) {
+          lyricBox.style.fontSize = '3.5rem';
+        } else if (len <= 6) {
+          lyricBox.style.fontSize = '2.8rem';
+        } else if (len <= 8) {
+          lyricBox.style.fontSize = '2.2rem';
+        } else if (len <= 11) {
+          lyricBox.style.fontSize = '1.75rem';
+        } else {
+          lyricBox.style.fontSize = '1.35rem';
+        }
+      }
+
+      lyricBox.addEventListener('input', () => {
+        autoFitLyricText();
+        saveUndoState();
+      });
+
+      lyricBox.addEventListener('blur', () => {
+        const text = lyricBox.innerText.trim();
+        lyricBox.innerHTML = formatLyricHtmlWithRules(text);
+      });
+
+      lyricBox.addEventListener('focus', () => {
+        if (lyricBox.innerText.trim() === '請輸入歌詞') {
+          const range = document.createRange();
+          range.selectNodeContents(lyricBox);
+          const sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+      });
+
+      lyricRow.appendChild(lyricBox);
+      measureBox.appendChild(lyricRow);
+
+      const notesContainer = document.createElement('div');
+      notesContainer.className = 'grid gap-1 py-1 items-end justify-items-center w-full px-2';
+
+      function createNodeElement(rowIdx, isHalfBeat = false, preservedNode = null) {
+        const circle = document.createElement('div');
+        const sizeClass = isHalfBeat ? 'w-11 h-11 md:w-13 md:h-13' : 'w-14 h-14 md:w-16 md:h-16';
+        circle.className = `bell-node ${sizeClass} rounded-full border-2 border-dashed border-slate-300 bg-white cursor-pointer shadow-sm flex items-center justify-center p-0.5`;
+        circle.dataset.row = rowIdx;
+
+        if (preservedNode) {
+          applyToneOrPercToNode(circle, preservedNode, isHalfBeat);
+        }
+
+        circle.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          saveUndoState();
+          clearNode(circle);
+        });
+
+        return circle;
+      }
+
+      function rebuildGrid(currentBeats, currentRows, preservedData = null) {
+        notesContainer.style.gridTemplateColumns = `repeat(${currentBeats}, minmax(0, 1fr))`;
+        notesContainer.innerHTML = '';
+        rowCountBadge.innerText = `${currentRows} 行織度`;
+
+        for (let b = 0; b < currentBeats; b++) {
+          const beatCol = document.createElement('div');
+          beatCol.className = 'beat-column flex flex-col gap-1.5 items-center w-full relative';
+          beatCol.dataset.beatIndex = b;
+
+          const beatData = (preservedData && preservedData[b]) ? preservedData[b] : null;
+          const isSubdivided = beatData ? (beatData.isSubdivided || false) : false;
+          beatCol.dataset.subdivided = isSubdivided ? 'true' : 'false';
+
+          const divideToggleBtn = document.createElement('button');
+          divideToggleBtn.className = 'hide-on-presentation no-print text-[10px] font-black px-1.5 py-0.5 rounded-md border transition flex items-center gap-0.5 shadow-2xs ' +
+            (isSubdivided 
+              ? 'bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-200' 
+              : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200');
+          divideToggleBtn.innerHTML = isSubdivided ? '<span>✂️</span> 8分(雙音)' : '<span>1拍</span>';
+
+          divideToggleBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            saveUndoState();
+            const currentSub = (beatCol.dataset.subdivided === 'true');
+            const newSub = !currentSub;
+            
+            const captured = captureSingleMeasureNotes(notesContainer);
+            if (!captured[b]) captured[b] = { isSubdivided: false, sub0: [], sub1: [] };
+            captured[b].isSubdivided = newSub;
+            
+            if (newSub && (!captured[b].sub1 || captured[b].sub1.length === 0)) {
+              captured[b].sub1 = JSON.parse(JSON.stringify(captured[b].sub0 || []));
+            }
+
+            rebuildGrid(currentBeats, currentRows, captured);
+            updateProgressSlidersAndDisplay();
+          });
+
+          beatCol.appendChild(divideToggleBtn);
+
+          if (isSubdivided) {
+            const subRowContainer = document.createElement('div');
+            subRowContainer.className = 'grid grid-cols-2 gap-1 w-full mt-0.5 justify-items-center items-center';
+
+            for (let s = 0; s < 2; s++) {
+              const subCol = document.createElement('div');
+              subCol.className = 'sub-beat-column beat-step-target flex flex-col gap-1.5 items-center p-0.5 md:p-1 rounded-xl bg-amber-50/50 border border-amber-200/70 hover:bg-amber-100/40 transition cursor-pointer relative w-full';
+              subCol.dataset.subIndex = s;
+
+              const subArr = (beatData && beatData[`sub${s}`]) ? beatData[`sub${s}`] : null;
+
+              for (let r = 0; r < currentRows; r++) {
+                const preservedNode = (subArr && subArr[r]) ? subArr[r] : null;
+                const circle = createNodeElement(r, true, preservedNode);
+                subCol.appendChild(circle);
+              }
+
+              subCol.addEventListener('click', (e) => {
+                const allSteps = getAllGuideSteps();
+                const stepIdx = allSteps.findIndex(s => s.element === subCol);
+                if (stepIdx !== -1) {
+                  currentStepIndex = stepIdx;
+                  runMetronomeStep(false);
+                  if (isPlayingMetronome) restartMetronomeTimer();
+                }
+
+                if (isPresentationActive || isPlayingMetronome) return;
+
+                saveUndoState();
+                if (currentMode.type === 'chord') {
+                  fillChordByTexture(subCol, currentMode.data, currentRows);
+                } else {
+                  const clickedCircle = e.target.closest('.bell-node');
+                  if (clickedCircle) applyCurrentBrushToNode(clickedCircle, true);
+                }
+              });
+
+              setupDragAndDrop(subCol, currentRows);
+              subRowContainer.appendChild(subCol);
+            }
+
+            beatCol.appendChild(subRowContainer);
+          } else {
+            beatCol.classList.add('beat-step-target');
+
+            const singleArr = (beatData && beatData.sub0) ? beatData.sub0 : null;
+
+            for (let r = 0; r < currentRows; r++) {
+              const preservedNode = (singleArr && singleArr[r]) ? singleArr[r] : null;
+              const circle = createNodeElement(r, false, preservedNode);
+              beatCol.appendChild(circle);
+            }
+
+            beatCol.addEventListener('click', (e) => {
+              if (e.target.closest('button')) return;
+
+              const allSteps = getAllGuideSteps();
+              const stepIdx = allSteps.findIndex(s => s.element === beatCol);
+              if (stepIdx !== -1) {
+                currentStepIndex = stepIdx;
+                runMetronomeStep(false);
+                if (isPlayingMetronome) restartMetronomeTimer();
+              }
+
+              if (isPresentationActive || isPlayingMetronome) return;
+
+              saveUndoState();
+              if (currentMode.type === 'chord') {
+                fillChordByTexture(beatCol, currentMode.data, currentRows);
+              } else {
+                const clickedCircle = e.target.closest('.bell-node');
+                if (clickedCircle) applyCurrentBrushToNode(clickedCircle, false);
+              }
+            });
+
+            setupDragAndDrop(beatCol, currentRows);
+          }
+
+          notesContainer.appendChild(beatCol);
+        }
+      }
+
+      function setupDragAndDrop(targetColumn, currentRows) {
+        targetColumn.addEventListener('dragover', (e) => {
+          if (isPresentationActive || isPlayingMetronome) return;
+          e.preventDefault();
+          const targetCircle = e.target.closest('.bell-node');
+          if (targetCircle) targetCircle.classList.add('drag-over');
+          else targetColumn.classList.add('chord-drag-over');
+        });
+
+        targetColumn.addEventListener('dragleave', (e) => {
+          const targetCircle = e.target.closest('.bell-node');
+          if (targetCircle) targetCircle.classList.remove('drag-over');
+          targetColumn.classList.remove('chord-drag-over');
+        });
+
+        targetColumn.addEventListener('drop', (e) => {
+          if (isPresentationActive || isPlayingMetronome) return;
+          e.preventDefault();
+          targetColumn.classList.remove('chord-drag-over');
+          const targetCircle = e.target.closest('.bell-node');
+          if (targetCircle) targetCircle.classList.remove('drag-over');
+
+          try {
+            const raw = e.dataTransfer.getData('application/json');
+            if (raw) {
+              saveUndoState();
+              const parsed = JSON.parse(raw);
+              if (parsed.type === 'chord') {
+                fillChordByTexture(targetColumn, parsed, currentRows);
+              } else if (parsed.type === 'single') {
+                if (targetCircle) applyToneOrPercToNode(targetCircle, { kind: 'tone', id: parsed.colorId }, targetCircle.closest('.sub-beat-column') !== null);
+              } else if (parsed.type === 'perc') {
+                if (targetCircle) applyToneOrPercToNode(targetCircle, { kind: 'perc', id: parsed.id, renderType: parsed.renderType, emoji: parsed.emoji, svgKey: parsed.svgKey, name: parsed.name }, targetCircle.closest('.sub-beat-column') !== null);
+              }
+            }
+          } catch (err) {
+            console.error(err);
+          }
+        });
+      }
+
+      function applyCurrentBrushToNode(circle, isHalf = false) {
+        if (currentMode.type === 'single') {
+          applyToneOrPercToNode(circle, { kind: 'tone', id: currentMode.data }, isHalf);
+        } else if (currentMode.type === 'perc') {
+          applyToneOrPercToNode(circle, { 
+            kind: 'perc', 
+            id: currentMode.data.id, 
+            renderType: currentMode.data.renderType,
+            emoji: currentMode.data.emoji,
+            svgKey: currentMode.data.svgKey,
+            imgData: currentMode.data.imgData,
+            name: currentMode.data.name 
+          }, isHalf);
+        } else if (currentMode.type === 'eraser') {
+          clearNode(circle);
+        } else if (currentMode.type === 'cycle') {
+          const tones = PALETTES_DATA[currentColorSystem];
+          const curId = circle.dataset.toneId;
+          const ids = ['', ...tones.map(t => t.id)];
+          const nextIdx = (ids.indexOf(curId || '') + 1) % ids.length;
+          if (ids[nextIdx] === '') {
+            clearNode(circle);
+          } else {
+            applyToneOrPercToNode(circle, { kind: 'tone', id: ids[nextIdx] }, isHalf);
+          }
+        }
+      }
+
+      beatSelect.addEventListener('change', (e) => {
+        saveUndoState();
+        beatCount = parseInt(e.target.value, 10);
+        rebuildGrid(beatCount, rowCount, captureSingleMeasureNotes(notesContainer));
+        updateProgressSlidersAndDisplay();
+      });
+
+      addRowBtn.addEventListener('click', () => {
+        if (rowCount < 5) {
+          saveUndoState();
+          rowCount++;
+          rebuildGrid(beatCount, rowCount, captureSingleMeasureNotes(notesContainer));
+        }
+      });
+
+      removeRowBtn.addEventListener('click', () => {
+        if (rowCount > 1) {
+          saveUndoState();
+          rowCount--;
+          rebuildGrid(beatCount, rowCount, captureSingleMeasureNotes(notesContainer));
+        }
+      });
+
+      rebuildGrid(beatCount, rowCount, measureData ? measureData.notesData : null);
+      autoFitLyricText();
+
+      measureBox.appendChild(notesContainer);
+      document.getElementById('measuresGrid').appendChild(measureBox);
+    }
+
+    function applyToneOrPercToNode(node, item, isHalfBeat = false) {
+      clearNode(node, false);
+
+      if (item.kind === 'tone') {
+        node.dataset.kind = 'tone';
+        node.dataset.toneId = item.id;
+
+        const isWhite = (item.id === 'color-8' && highNoteAppearance === 'white' && currentColorSystem === 'handbell');
+        if (isWhite) {
+          node.classList.add('color-8-white');
+        } else if (item.id === 'color-8') {
+          node.classList.add('color-8-bordered');
+        } else {
+          node.classList.add(item.id);
+        }
+
+        const toneObj = PALETTES_DATA[currentColorSystem].find(t => t.id === item.id);
+        if (toneObj) {
+          node.innerHTML = getNodeLabelHtml(toneObj, isHalfBeat);
+        }
+      } else if (item.kind === 'perc') {
+        node.dataset.kind = 'perc';
+        node.dataset.percId = item.id;
+        node.classList.add('perc-bell-node');
+
+        const allItems = [...PERCUSSION_ITEMS, ...customPercussionList];
+        const percObj = allItems.find(p => p.id === item.id);
+        const rType = item.renderType || (percObj ? percObj.renderType : 'svg');
+
+        if (rType === 'emoji') {
+          const emojiChar = item.emoji || (percObj ? percObj.emoji : '👏');
+          node.dataset.renderType = 'emoji';
+          node.dataset.emoji = emojiChar;
+          node.innerHTML = `<span class="${isHalfBeat ? 'text-xl' : 'text-2xl md:text-3xl'} leading-none select-none">${emojiChar}</span>`;
+        } else if (rType === 'image') {
+          const imgSrc = item.imgData || (percObj ? percObj.imgData : '');
+          node.dataset.renderType = 'image';
+          node.dataset.imgData = imgSrc;
+          node.innerHTML = `<img src="${imgSrc}" class="w-full h-full object-contain p-1 select-none pointer-events-none" alt="">`;
+        } else {
+          const svgKey = item.svgKey || (percObj ? percObj.svgKey : (PERCUSSION_SVGS[item.id] ? item.id : 'drum'));
+          node.dataset.renderType = 'svg';
+          node.dataset.svgKey = svgKey;
+          const svgMarkup = PERCUSSION_SVGS[svgKey] || PERCUSSION_SVGS[item.id] || PERCUSSION_SVGS.drum;
+          node.innerHTML = `<span class="w-full h-full flex items-center justify-center p-1">${svgMarkup}</span>`;
+        }
+      }
+    }
+
+    function clearNode(node, cleanDatasets = true) {
+      ['color-1', 'color-2', 'color-3', 'color-4', 'color-5', 'color-6', 'color-7', 'color-8', 'color-8-bordered', 'color-8-white', 'perc-bell-node'].forEach(c => {
+        node.classList.remove(c);
+      });
+      node.innerHTML = '';
+      if (cleanDatasets) {
+        delete node.dataset.kind;
+        delete node.dataset.toneId;
+        delete node.dataset.percId;
+        delete node.dataset.renderType;
+        delete node.dataset.emoji;
+        delete node.dataset.svgKey;
+        delete node.dataset.imgData;
+      }
+    }
+
+    function fillChordByTexture(columnElement, chordData, rows) {
+      const circles = columnElement.querySelectorAll('.bell-node');
+      if (!chordData || !chordData.rootToHigh || circles.length === 0) return;
+
+      const isHalf = columnElement.closest('.sub-beat-column') !== null;
+      const rootTone = chordData.rootToHigh[0].colorId;
+      const thirdTone = chordData.rootToHigh[1].colorId;
+      const fifthTone = chordData.rootToHigh[2].colorId;
+
+      if (rows === 1) {
+        applyToneOrPercToNode(circles[0], { kind: 'tone', id: rootTone }, isHalf);
+      } else if (rows === 2) {
+        applyToneOrPercToNode(circles[1], { kind: 'tone', id: rootTone }, isHalf);
+        applyToneOrPercToNode(circles[0], { kind: 'tone', id: fifthTone }, isHalf);
+      } else if (rows === 3) {
+        applyToneOrPercToNode(circles[2], { kind: 'tone', id: rootTone }, isHalf);
+        applyToneOrPercToNode(circles[1], { kind: 'tone', id: thirdTone }, isHalf);
+        applyToneOrPercToNode(circles[0], { kind: 'tone', id: fifthTone }, isHalf);
+      } else if (rows === 4) {
+        applyToneOrPercToNode(circles[3], { kind: 'tone', id: rootTone }, isHalf);
+        applyToneOrPercToNode(circles[2], { kind: 'tone', id: rootTone }, isHalf);
+        applyToneOrPercToNode(circles[1], { kind: 'tone', id: thirdTone }, isHalf);
+        applyToneOrPercToNode(circles[0], { kind: 'tone', id: fifthTone }, isHalf);
+      } else if (rows >= 5) {
+        applyToneOrPercToNode(circles[4], { kind: 'tone', id: rootTone }, isHalf);
+        applyToneOrPercToNode(circles[3], { kind: 'tone', id: rootTone }, isHalf);
+        applyToneOrPercToNode(circles[2], { kind: 'tone', id: thirdTone }, isHalf);
+        applyToneOrPercToNode(circles[1], { kind: 'tone', id: fifthTone }, isHalf);
+        applyToneOrPercToNode(circles[0], { kind: 'tone', id: fifthTone }, isHalf);
+      }
+
+      columnElement.classList.add('scale-105');
+      setTimeout(() => columnElement.classList.remove('scale-105'), 140);
+    }
+
+    function captureSingleMeasureNotes(notesContainer) {
+      const result = [];
+      const cols = notesContainer.querySelectorAll('.beat-column');
+      cols.forEach(col => {
+        const isSubdivided = (col.dataset.subdivided === 'true');
+        const allItems = [...PERCUSSION_ITEMS, ...customPercussionList];
+        
+        if (isSubdivided) {
+          const subCols = col.querySelectorAll('.sub-beat-column');
+          const sub0Arr = [];
+          const sub1Arr = [];
+
+          if (subCols.length === 2) {
+            subCols[0].querySelectorAll('.bell-node').forEach(c => {
+              if (c.dataset.kind === 'tone') sub0Arr.push({ kind: 'tone', id: c.dataset.toneId });
+              else if (c.dataset.kind === 'perc') {
+                const percObj = allItems.find(p => p.id === c.dataset.percId);
+                sub0Arr.push({ 
+                  kind: 'perc', 
+                  id: c.dataset.percId, 
+                  renderType: c.dataset.renderType || (percObj ? percObj.renderType : 'svg'),
+                  emoji: c.dataset.emoji || (percObj ? percObj.emoji : ''),
+                  svgKey: c.dataset.svgKey || (percObj ? percObj.svgKey : 'drum'),
+                  imgData: c.dataset.imgData || (percObj ? percObj.imgData : ''),
+                  name: percObj ? percObj.name : '' 
+                });
+              } else sub0Arr.push(null);
+            });
+
+            subCols[1].querySelectorAll('.bell-node').forEach(c => {
+              if (c.dataset.kind === 'tone') sub1Arr.push({ kind: 'tone', id: c.dataset.toneId });
+              else if (c.dataset.kind === 'perc') {
+                const percObj = allItems.find(p => p.id === c.dataset.percId);
+                sub1Arr.push({ 
+                  kind: 'perc', 
+                  id: c.dataset.percId, 
+                  renderType: c.dataset.renderType || (percObj ? percObj.renderType : 'svg'),
+                  emoji: c.dataset.emoji || (percObj ? percObj.emoji : ''),
+                  svgKey: c.dataset.svgKey || (percObj ? percObj.svgKey : 'drum'),
+                  imgData: c.dataset.imgData || (percObj ? percObj.imgData : ''),
+                  name: percObj ? percObj.name : '' 
+                });
+              } else sub1Arr.push(null);
+            });
+          }
+
+          result.push({ isSubdivided: true, sub0: sub0Arr, sub1: sub1Arr });
+        } else {
+          const sub0Arr = [];
+          col.querySelectorAll('.bell-node').forEach(c => {
+            if (c.dataset.kind === 'tone') sub0Arr.push({ kind: 'tone', id: c.dataset.toneId });
+            else if (c.dataset.kind === 'perc') {
+              const percObj = allItems.find(p => p.id === c.dataset.percId);
+              sub0Arr.push({ 
+                kind: 'perc', 
+                id: c.dataset.percId, 
+                renderType: c.dataset.renderType || (percObj ? percObj.renderType : 'svg'),
+                emoji: c.dataset.emoji || (percObj ? percObj.emoji : ''),
+                svgKey: c.dataset.svgKey || (percObj ? percObj.svgKey : 'drum'),
+                imgData: c.dataset.imgData || (percObj ? percObj.imgData : ''),
+                name: percObj ? percObj.name : '' 
+              });
+            } else sub0Arr.push(null);
+          });
+
+          result.push({ isSubdivided: false, sub0: sub0Arr, sub1: [] });
+        }
+      });
+      return result;
+    }
+
+    function captureCurrentMeasuresState() {
+      const measures = [];
+      document.querySelectorAll('.measure-card').forEach(card => {
+        const lyric = card.querySelector('.lyric-justified-box').innerText.trim();
+        const beats = card.querySelectorAll('.beat-column').length;
+        const firstCol = card.querySelector('.beat-column');
+        const rows = firstCol ? firstCol.querySelectorAll('.sub-beat-column .bell-node, :scope > .bell-node').length / (firstCol.dataset.subdivided === 'true' ? 2 : 1) : 1;
+        const notesContainer = card.querySelector('.grid.gap-1.py-1');
+        const notesData = notesContainer ? captureSingleMeasureNotes(notesContainer) : [];
+
+        measures.push({
+          lyric,
+          beats,
+          rows: Math.round(rows) || 1,
+          notesData
+        });
+      });
+      return {
+        measures,
+        currentColorSystem,
+        highNoteAppearance,
+        circleStyle: currentCircleStyle
+      };
+    }
+
+    function restoreMeasuresFromState(state) {
+      if (!state || !state.measures) return;
+      if (state.currentColorSystem) currentColorSystem = state.currentColorSystem;
+      if (state.highNoteAppearance) highNoteAppearance = state.highNoteAppearance;
+      if (state.circleStyle) currentCircleStyle = state.circleStyle;
+      
+      document.getElementById('colorSystemSelect').value = currentColorSystem;
+      document.getElementById('highNoteAppearanceSelect').value = highNoteAppearance;
+      document.getElementById('circleStyleSelect').value = currentCircleStyle;
+
+      applyRootPaletteVars();
+      initChordUI();
+      initPaletteUI();
+
+      const grid = document.getElementById('measuresGrid');
+      grid.innerHTML = '';
+      state.measures.forEach(m => renderMeasureElement(m));
+      updateProgressSlidersAndDisplay();
+    }
+
+    function addMeasure() {
+      saveUndoState();
+      renderMeasureElement({
+        lyric: '請輸入歌詞',
+        beats: globalDefaultBeats,
+        rows: 1,
+        notesData: null
+      });
+      updateProgressSlidersAndDisplay();
+    }
+
+    function openBatchLyricModal() {
+      document.getElementById('batchLyricModal').classList.remove('hidden');
+      document.getElementById('batchLyricText').focus();
+    }
+
+    function closeBatchLyricModal() {
+      document.getElementById('batchLyricModal').classList.add('hidden');
+    }
+
+    function executeBatchLyrics() {
+      const rawText = document.getElementById('batchLyricText').value;
+      if (!rawText.trim()) {
+        closeBatchLyricModal();
+        return;
+      }
+
+      saveUndoState();
+
+      const defaultTexture = parseInt(document.getElementById('batchTextureInput').value, 10) || 1;
+      const defaultBeats = parseInt(document.getElementById('batchBeatsSelect').value, 10) || 4;
+      const shouldClear = document.getElementById('batchClearExisting').checked;
+
+      const lines = rawText
+        .split(/\r?\n|，|。|！|？|,|\./)
+        .map(l => l.trim())
+        .filter(l => l.length > 0);
+
+      if (lines.length === 0) {
+        closeBatchLyricModal();
+        return;
+      }
+
+      if (shouldClear) {
+        document.getElementById('measuresGrid').innerHTML = '';
+      }
+
+      lines.forEach(line => {
+        renderMeasureElement({
+          lyric: line,
+          beats: defaultBeats,
+          rows: Math.min(5, Math.max(1, defaultTexture)),
+          notesData: null
+        });
+      });
+
+      document.getElementById('batchLyricText').value = '';
+      closeBatchLyricModal();
+      updateProgressSlidersAndDisplay();
+    }
+
+    function togglePresentation() {
+      isPresentationActive = !isPresentationActive;
+      const body = document.body;
+      const bar = document.getElementById('presentationBar');
+
+      if (isPresentationActive) {
+        body.classList.add('presentation-mode');
+        bar.classList.remove('hidden');
+        resetPresBarToSafePosition();
+        if (document.documentElement.requestFullscreen) {
+          document.documentElement.requestFullscreen().catch(() => {});
+        }
+      } else {
+        body.classList.remove('presentation-mode');
+        bar.classList.add('hidden');
+        if (document.fullscreenElement && document.exitFullscreen) {
+          document.exitFullscreen().catch(() => {});
+        }
+      }
+      updateProgressSlidersAndDisplay();
+    }
+
+    function resetPresBarToSafePosition() {
+      const presBar = document.getElementById('presentationBar');
+      if (!presBar) return;
+      presBar.style.left = 'auto';
+      presBar.style.right = '20px';
+      presBar.style.top = '20px';
+    }
+
+    let isDraggingPresBar = false;
+    let dragStartX = 0, dragStartY = 0;
+    let barStartX = 0, barStartY = 0;
+
+    const presBar = document.getElementById('presentationBar');
+    const dragHandle = document.getElementById('presentationDragHandle');
+
+    dragHandle.addEventListener('mousedown', (e) => {
+      if (e.target.tagName === 'BUTTON' || e.target.closest('button') || e.target.tagName === 'INPUT' || e.target.closest('label')) return;
+      isDraggingPresBar = true;
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+      const rect = presBar.getBoundingClientRect();
+      barStartX = rect.left;
+      barStartY = rect.top;
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isDraggingPresBar) return;
+      const dx = e.clientX - dragStartX;
+      const dy = e.clientY - dragStartY;
+
+      const panelRect = presBar.getBoundingClientRect();
+      const panelWidth = panelRect.width;
+      const winWidth = window.innerWidth;
+      const winHeight = window.innerHeight;
+
+      const minX = -(panelWidth - 60);
+      const maxX = winWidth - 60;
+      const minY = 5;
+      const maxY = winHeight - 40;
+
+      const newLeft = Math.min(maxX, Math.max(minX, barStartX + dx));
+      const newTop = Math.min(maxY, Math.max(minY, barStartY + dy));
+
+      presBar.style.left = `${newLeft}px`;
+      presBar.style.top = `${newTop}px`;
+      presBar.style.right = 'auto';
+    });
+
+    document.addEventListener('mouseup', () => {
+      isDraggingPresBar = false;
+    });
+
+    dragHandle.addEventListener('dblclick', (e) => {
+      if (e.target.tagName !== 'BUTTON' && !e.target.closest('button') && e.target.tagName !== 'INPUT') {
+        resetPresBarToSafePosition();
+      }
+    });
+
+    function togglePresBarMini() {
+      const zoomCtrls = document.getElementById('presZoomControls');
+      const btn = document.getElementById('btnPresMini');
+      if (zoomCtrls.classList.contains('hidden')) {
+        zoomCtrls.classList.remove('hidden');
+        btn.innerText = '➖';
+      } else {
+        zoomCtrls.classList.add('hidden');
+        btn.innerText = '🔍';
+      }
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        if (isPresentationActive) togglePresentation();
+        closeBatchLyricModal();
+        closeActionWordModal();
+      }
+    });
+
+    document.addEventListener('fullscreenchange', () => {
+      if (!document.fullscreenElement && isPresentationActive) {
+        togglePresentation();
+      }
+    });
+
+    const initialBlankMeasures = [
+      { lyric: "請輸入歌詞", beats: 4, rows: 1, notesData: null },
+      { lyric: "請輸入歌詞", beats: 4, rows: 1, notesData: null },
+      { lyric: "請輸入歌詞", beats: 4, rows: 1, notesData: null }
+    ];
+
+    window.addEventListener('DOMContentLoaded', () => {
+      try {
+        const savedCustom = localStorage.getItem('customPercussionList_saved');
+        if (savedCustom) customPercussionList = JSON.parse(savedCustom);
+      } catch (e) {}
+
+      applyRootPaletteVars();
+      initChordUI();
+      initPaletteUI();
+
+      localStorage.removeItem('auto_saved_sheet');
+      initialBlankMeasures.forEach(m => renderMeasureElement(m));
+
+      updateUndoButtonState();
+      updateProgressSlidersAndDisplay();
+    });
+  </script>
+</body>
+</html>
